@@ -1,0 +1,16 @@
+import {PWAProvider} from './PWA';
+import {FeaturesProvider} from './Features';
+import { MessagesProvider } from './message-state';
+import { applyAppearance } from './Appearance';
+import { InteractionProvider } from './AuthFlows';
+import { AnalyticsTracker } from './analytics-tracker';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import App from './App';
+import { NotificationsProvider } from './Notifications';
+import { SessionProvider } from './session';
+import './styles.css';
+import { ToastHost } from './toast';
+applyAppearance();
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><BrowserRouter><PWAProvider><SessionProvider><FeaturesProvider><MessagesProvider><InteractionProvider><NotificationsProvider><AnalyticsTracker/><App/><ToastHost/></NotificationsProvider></InteractionProvider></MessagesProvider></FeaturesProvider></SessionProvider></PWAProvider></BrowserRouter></React.StrictMode>);

@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: fpiupdates-staging
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health/ready
+    envVars:
+      - key: APP_URL
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: DB_POOL_MAX
+        value: "2"
+      - key: REQUIRE_VERIFIED_EMAIL
+        value: "true"
+      - key: EMAIL_TRANSPORT
+        value: gmail-api
+      - key: SMTP_FROM
+        sync: false
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: MEDIA_STORAGE_PROVIDER
+        value: local
+      - key: MEDIA_UPLOADS_DISABLED
+        value: "true"
+      - key: PUBLISHING_WORKER_DISABLED
+        value: "true"
+      - key: ANALYTICS_WORKER_DISABLED
+        value: "true"

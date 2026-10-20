@@ -1,0 +1,20 @@
+BEGIN;
+CREATE TABLE "SportsCompetition" (id UUID PRIMARY KEY,name VARCHAR(120) NOT NULL,season VARCHAR(60) NOT NULL,description VARCHAR(1500) NOT NULL,format VARCHAR(20) NOT NULL,published BOOLEAN NOT NULL DEFAULT false,"winPoints" INTEGER NOT NULL DEFAULT 3,"drawPoints" INTEGER NOT NULL DEFAULT 1,"lossPoints" INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 0,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,
+ CHECK(format IN ('GROUP_KNOCKOUT','LEAGUE','KNOCKOUT')),CHECK("winPoints" BETWEEN 0 AND 10 AND "drawPoints" BETWEEN 0 AND 10 AND "lossPoints" BETWEEN 0 AND 10));
+CREATE INDEX "SportsCompetition_published_createdAt_id_idx" ON "SportsCompetition"(published,"createdAt" DESC,id DESC);
+CREATE TABLE "SportsTeam" (id UUID PRIMARY KEY,"competitionId" UUID NOT NULL REFERENCES "SportsCompetition"(id) ON DELETE RESTRICT ON UPDATE CASCADE,name VARCHAR(100) NOT NULL,"groupName" VARCHAR(20) NOT NULL);
+CREATE UNIQUE INDEX "SportsTeam_competitionId_name_key" ON "SportsTeam"("competitionId",name);
+CREATE TABLE "SportsMatch" (id UUID PRIMARY KEY,"competitionId" UUID NOT NULL REFERENCES "SportsCompetition"(id) ON DELETE RESTRICT ON UPDATE CASCADE,"homeId" UUID NOT NULL REFERENCES "SportsTeam"(id) ON DELETE RESTRICT ON UPDATE CASCADE,"awayId" UUID NOT NULL REFERENCES "SportsTeam"(id) ON DELETE RESTRICT ON UPDATE CASCADE,stage VARCHAR(20) NOT NULL,"kickoffAt" TIMESTAMP(3) NOT NULL,venue VARCHAR(120) NOT NULL,"reporterId" UUID REFERENCES "User"(id) ON DELETE SET NULL ON UPDATE CASCADE,featured BOOLEAN NOT NULL DEFAULT false,status VARCHAR(20) NOT NULL DEFAULT 'SCHEDULED',"homeScore" INTEGER NOT NULL DEFAULT 0,"awayScore" INTEGER NOT NULL DEFAULT 0,"homePenalties" INTEGER,"awayPenalties" INTEGER,minute INTEGER,confirmed BOOLEAN NOT NULL DEFAULT false,revision INTEGER NOT NULL DEFAULT 0,"lastUpdateAt" TIMESTAMP(3),"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,
+ CHECK("homeId"<>"awayId"),CHECK("homeScore" BETWEEN 0 AND 99 AND "awayScore" BETWEEN 0 AND 99),CHECK(minute IS NULL OR minute BETWEEN 0 AND 150),CHECK(NOT confirmed OR status='FULL_TIME'),CHECK(status IN ('SCHEDULED','LIVE','HALF_TIME','FULL_TIME','POSTPONED','CANCELLED')));
+CREATE INDEX "SportsMatch_competitionId_kickoffAt_id_idx" ON "SportsMatch"("competitionId","kickoffAt",id);
+CREATE INDEX "SportsMatch_reporterId_status_idx" ON "SportsMatch"("reporterId",status);
+CREATE INDEX "SportsMatch_featured_kickoffAt_idx" ON "SportsMatch"(featured,"kickoffAt");
+CREATE TABLE "SportsUpdate" (id UUID PRIMARY KEY,"matchId" UUID NOT NULL REFERENCES "SportsMatch"(id) ON DELETE RESTRICT ON UPDATE CASCADE,"actorId" UUID REFERENCES "User"(id) ON DELETE SET NULL ON UPDATE CASCADE,revision INTEGER NOT NULL,kind VARCHAR(20) NOT NULL,note VARCHAR(500) NOT NULL,previous JSONB NOT NULL,current JSONB NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX "SportsUpdate_matchId_revision_key" ON "SportsUpdate"("matchId",revision);
+ALTER TABLE "Post" ADD COLUMN "sportsCompetitionId" UUID REFERENCES "SportsCompetition"(id) ON DELETE RESTRICT ON UPDATE CASCADE,ADD COLUMN "sportsMatchId" UUID REFERENCES "SportsMatch"(id) ON DELETE RESTRICT ON UPDATE CASCADE;
+CREATE INDEX "Post_sportsCompetitionId_createdAt_id_idx" ON "Post"("sportsCompetitionId","createdAt" DESC,id DESC);
+CREATE INDEX "Post_sportsMatchId_createdAt_id_idx" ON "Post"("sportsMatchId","createdAt" DESC,id DESC);
+UPDATE "Role" SET permissions=ARRAY(SELECT DISTINCT unnest(permissions||ARRAY['sports.manage','sports.report'])) WHERE key='administrator';
+INSERT INTO "Role"(id,key,name,permissions) VALUES (gen_random_uuid(),'sports-reporter','Sports scorekeeper',ARRAY['sports.report']) ON CONFLICT(key) DO NOTHING;
+INSERT INTO "Menu"(key,label,path,"membersOnly",permission,enabled,position) VALUES ('sports','Campus sports','/sports',false,NULL,true,11),('sports-staff','Sports desk','/sports/desk',true,'sports.report',true,85) ON CONFLICT(key) DO NOTHING;
+COMMIT;

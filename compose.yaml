@@ -1,0 +1,19 @@
+name: fpiupdates-dev
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fpiupdates
+      POSTGRES_PASSWORD: local_only
+      POSTGRES_DB: fpiupdates
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fpiupdates -d fpiupdates"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+volumes:
+  postgres_data:

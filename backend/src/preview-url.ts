@@ -1,0 +1,2 @@
+import {isIP} from 'node:net';
+export function publicUrl(value:string){const url=new URL(value);url.hash='';const host=url.hostname.replace(/^\[|\]$/g,'').toLowerCase();if(!['https:','http:'].includes(url.protocol)||url.username||url.password||url.port||value.length>2048||isIP(host)||!host.includes('.')||/(^|\.)(localhost|local|internal|test|invalid|onion)$/.test(host))throw new Error('Public HTTP URL required');return url;}

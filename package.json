@@ -1,0 +1,10 @@
+{
+  "name": "fpiupdates",
+  "version": "0.27.0",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "test": "npm --prefix backend test"
+  }
+}

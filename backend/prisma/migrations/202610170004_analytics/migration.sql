@@ -1,0 +1,18 @@
+BEGIN;
+ALTER TABLE "User" ADD COLUMN "publicRankingsOptOut" BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE "AnalyticsSettings" (key VARCHAR(20) PRIMARY KEY, secret VARCHAR(100) NOT NULL, "trackingSince" TIMESTAMPTZ(3) NOT NULL DEFAULT now(), "publicRankings" BOOLEAN NOT NULL DEFAULT false);
+INSERT INTO "AnalyticsSettings" (key,secret) VALUES ('main',gen_random_uuid()::text||gen_random_uuid()::text);
+CREATE TABLE "AnalyticsDay" (day DATE PRIMARY KEY,visitors INTEGER NOT NULL DEFAULT 0,"pageViews" INTEGER NOT NULL DEFAULT 0,"activeMembers" INTEGER NOT NULL DEFAULT 0,"apiRequests" INTEGER NOT NULL DEFAULT 0,"apiErrors" INTEGER NOT NULL DEFAULT 0,"apiLatencyMs" DOUBLE PRECISION NOT NULL DEFAULT 0,"slowRequests" INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE "AnalyticsVisitorDay" (day DATE NOT NULL,"visitorHash" CHAR(64) NOT NULL,"lastSeen" TIMESTAMPTZ(3) NOT NULL,PRIMARY KEY(day,"visitorHash"));
+CREATE TABLE "AnalyticsHit" (hash CHAR(64) PRIMARY KEY,day DATE NOT NULL);
+CREATE INDEX "AnalyticsHit_day_idx" ON "AnalyticsHit"(day);
+CREATE TABLE "AnalyticsMember" ("daysSeen" INTEGER NOT NULL DEFAULT 0,"userId" UUID PRIMARY KEY REFERENCES "User"(id) ON DELETE CASCADE ON UPDATE CASCADE,"firstSeen" TIMESTAMPTZ(3) NOT NULL,"lastSeen" TIMESTAMPTZ(3) NOT NULL);
+CREATE INDEX "AnalyticsMember_lastSeen_idx" ON "AnalyticsMember"("lastSeen");
+CREATE TABLE "AnalyticsMemberDay" ("userId" UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE ON UPDATE CASCADE,day DATE NOT NULL,"lastSeen" TIMESTAMPTZ(3) NOT NULL,PRIMARY KEY("userId",day));
+CREATE INDEX "AnalyticsMemberDay_day_idx" ON "AnalyticsMemberDay"(day);
+CREATE TABLE "AnalyticsPageDay" (day DATE NOT NULL,page VARCHAR(20) NOT NULL,views INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,page));
+CREATE TABLE "AnalyticsSourceDay" (day DATE NOT NULL,source VARCHAR(20) NOT NULL,visitors INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,source));
+CREATE TABLE "AnalyticsWeeklyReport" ("weekStart" DATE PRIMARY KEY,"weekEnd" DATE NOT NULL,"capturedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT now(),partial BOOLEAN NOT NULL,"publicData" JSONB NOT NULL,"adminData" JSONB NOT NULL);
+UPDATE "Role" SET permissions=ARRAY(SELECT DISTINCT unnest(permissions||ARRAY['analytics.view','analytics.manage'])) WHERE key='administrator';
+INSERT INTO "Menu" (key,label,path,"membersOnly",permission,enabled,position) VALUES ('stats','Platform stats','/stats',false,NULL,true,10),('analytics','Analytics','/admin/analytics',true,'analytics.view',true,90) ON CONFLICT DO NOTHING;
+COMMIT;

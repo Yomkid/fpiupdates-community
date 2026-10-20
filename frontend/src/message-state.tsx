@@ -1,0 +1,9 @@
+import {useFeatures} from './Features';
+import {createContext,useContext,useEffect,useState,type ReactNode} from 'react';
+import {api} from './api';
+import {useSession} from './session';
+import {toast} from './toast';
+const Context=createContext({unreadCount:0,requestCount:0});
+export function MessagesProvider({children}:{children:ReactNode}){const {user}=useSession();const {flags}=useFeatures();const [value,setValue]=useState({owner:'',unreadCount:0,requestCount:0});useEffect(()=>{if(!user||!flags.messages)return;let active=true,running=false;let previous:number|undefined;const c=new AbortController();async function load(){if(!active||running)return;running=true;try{const result=await api<{unreadCount:number;requestCount:number}>('/messages/count',{signal:AbortSignal.any([c.signal,AbortSignal.timeout(10000)])});if(!active)return;const total=result.unreadCount+result.requestCount;if(previous!==undefined&&total>previous&&!document.hidden)toast('You have new messages.','info',{label:'View',href:'/messages'});previous=total;setValue({...result,owner:user!.id});}catch{}finally{running=false;}}void load();const timer=setInterval(()=>{if(!document.hidden)void load();},15000);const wake=()=>void load();window.addEventListener('focus',wake);window.addEventListener('messages-updated',wake);window.addEventListener('feed-updated',wake);return()=>{active=false;c.abort();clearInterval(timer);window.removeEventListener('focus',wake);window.removeEventListener('messages-updated',wake);window.removeEventListener('feed-updated',wake);};},[user?.id,flags.messages]);return <Context.Provider value={flags.messages&&value.owner===user?.id?value:{unreadCount:0,requestCount:0}}>{children}</Context.Provider>;}
+export const useMessageCounts=()=>useContext(Context);
+export function MessageBadge(){const value=useMessageCounts();const total=value.unreadCount+value.requestCount;return total?<span className="unread-badge">{total>99?'99+':total}</span>:null;}

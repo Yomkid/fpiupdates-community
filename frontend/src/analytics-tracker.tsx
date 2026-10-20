@@ -1,0 +1,19 @@
+import { useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useSession } from './session';
+import { api } from './api';
+const ID_KEY='fpiupdates.analytics.daily';const OPT_KEY='fpiupdates.analytics.optout';
+export function measurementExcluded(){try{return localStorage.getItem(OPT_KEY)==='1'||navigator.doNotTrack==='1'||(navigator as Navigator&{globalPrivacyControl?:boolean}).globalPrivacyControl===true;}catch{return true;}}
+export function excludeMeasurement(value:boolean){try{if(value){localStorage.setItem(OPT_KEY,'1');localStorage.removeItem(ID_KEY);localStorage.removeItem('fpiupdates.install.id');localStorage.removeItem('fpiupdates.install.day');}else localStorage.removeItem(OPT_KEY);}catch{}window.dispatchEvent(new Event('analytics-preference'));}
+function nonce(){try{return typeof globalThis.crypto?.randomUUID==='function'?globalThis.crypto.randomUUID():null;}catch{return null;}}
+function browserId(){try{const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Lagos',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const stored=JSON.parse(localStorage.getItem(ID_KEY)??'null');if(stored?.day===day&&typeof stored.id==='string'&&/^[0-9a-f-]{36}$/i.test(stored.id))return stored.id;const id=crypto.randomUUID();localStorage.setItem(ID_KEY,JSON.stringify({day,id}));return id;}catch{return null;}}
+function category(path:string){if(path==='/home')return 'feed';if(path.startsWith('/articles'))return 'articles';if(path.startsWith('/communities'))return 'communities';if(path.startsWith('/u/'))return 'profile';if(path.startsWith('/search')||path.startsWith('/tags'))return 'search';if(path.startsWith('/stats'))return 'stats';return 'other';}
+function source(){try{if(!document.referrer)return 'direct';const host=new URL(document.referrer).hostname;if(host===location.hostname)return 'internal';if(/(^|\.)(google\.[a-z.]+|bing.com|duckduckgo.com|yahoo.com)$/.test(host))return 'search';if(/(^|\.)(x.com|t.co|twitter.com|facebook.com|instagram.com|whatsapp.com|t.me)$/.test(host))return 'social';return 'referral';}catch{return 'direct';}}
+export function AnalyticsTracker(){
+ const {pathname}=useLocation();const {user,loading}=useSession();const ready=useRef(!loading);ready.current=!loading;
+ const event=useRef<{path:string;id:string}|null>(null);const activeAt=useRef(Date.now());const page=useRef(category(pathname));page.current=category(pathname);
+ async function send(kind:'PAGE'|'PULSE',id:string){if(!ready.current||measurementExcluded()||document.hidden||Date.now()-activeAt.current>300000)return;const visitorId=browserId();if(!visitorId)return;try{await api('/stats/collect',{method:'POST',body:JSON.stringify({visitorId,eventId:id,kind,page:page.current,source:source()}),signal:AbortSignal.timeout(10000)});}catch{/* Measurement failure never interrupts normal use. */}}
+ useEffect(()=>{if(loading)return;if(!event.current||event.current.path!==pathname){const id=nonce();if(!id)return;event.current={path:pathname,id};}activeAt.current=Date.now();void send('PAGE',event.current.id);},[pathname,loading,user?.id]);
+ useEffect(()=>{const pulse=()=>{const id=nonce();if(id)void send('PULSE',id);};const activity=()=>{activeAt.current=Date.now();};const wake=()=>{if(!document.hidden){activity();pulse();}};const preference=()=>pulse();for(const name of ['pointerdown','keydown','scroll'])window.addEventListener(name,activity,{passive:true});document.addEventListener('visibilitychange',wake);window.addEventListener('analytics-preference',preference);const timer=setInterval(pulse,60000);return()=>{clearInterval(timer);for(const name of ['pointerdown','keydown','scroll'])window.removeEventListener(name,activity);document.removeEventListener('visibilitychange',wake);window.removeEventListener('analytics-preference',preference);};},[]);
+ return null;
+}

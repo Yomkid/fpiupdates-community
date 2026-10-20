@@ -1,0 +1,826 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+}
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+enum PostStatus {
+  PUBLISHED
+  HIDDEN
+}
+enum ReportReason {
+  SCAM
+  IMPERSONATION
+  THREAT
+  HARASSMENT
+  OTHER
+}
+model User {
+ pushDevices PushDevice[]
+ adCampaigns AdCampaign[]
+  gender String? @db.VarChar(24)
+  occupation String? @db.VarChar(120)
+  skills String[] @default([])
+  onboardingStage String @default("DONE") @db.VarChar(10)
+  feedSnapshots FeedSnapshot[]
+  discoverByEmail Boolean @default(false)
+  discoverByPhone Boolean @default(false)
+  phoneVerifiedAt DateTime?
+  sportsPlayers SportsPlayer[]
+  passwordEnabled Boolean @default(true)
+  messagePolicy String @default("REQUESTS") @db.VarChar(12)
+  oauthIdentities OAuthIdentity[]
+  chatsLow ChatConversation[] @relation("ChatLow")
+  chatsHigh ChatConversation[] @relation("ChatHigh")
+  chatsRequested ChatConversation[] @relation("ChatRequester")
+  messages ChatMessage[]
+  messageReports ChatReport[] @relation("ChatReporter")
+  reviewedMessages ChatReport[] @relation("ChatReviewer")
+  threadPublications ThreadPublication[]
+  sportsAssignments SportsMatch[] @relation("SportsReporter")
+  sportsUpdates SportsUpdate[] @relation("SportsUpdater")
+  profileCoverMediaId String? @db.Uuid
+  profileCoverMedia Media? @relation("ProfileCover", fields:[profileCoverMediaId], references:[id], onDelete:SetNull)
+  campusIdentity String? @db.VarChar(20)
+  pinnedPostId String? @db.Uuid
+  pinnedPost Post? @relation("PinnedPost", fields:[pinnedPostId], references:[id], onDelete:SetNull)
+  @@index([profileCoverMediaId])
+  @@index([pinnedPostId])
+  publicRankingsOptOut Boolean @default(false)
+  measuredDays AnalyticsMemberDay[]
+  measuredActivity AnalyticsMember?
+  mentionedIn PostToken[]
+  articleWorkingCopies ArticleWorkingCopy[] @relation("WorkingAuthor")
+  scheduledWorkingCopies ArticleWorkingCopy[] @relation("WorkingScheduler")
+  phoneNumber String? @db.VarChar(16)
+  dateOfBirth DateTime? @db.Date
+  location String? @db.VarChar(100)
+  feedEvents FeedEvent[]
+  blocks Block[] @relation("Blocker")
+  blockedBy Block[] @relation("Blocked")
+  mutes Mute[] @relation("Muter")
+  mutedBy Mute[] @relation("Muted")
+  conversations Post[] @relation("ConversationOwner")
+  notifications Notification[] @relation("NotificationRecipient")
+  notificationActivity Notification[] @relation("NotificationActor")
+  @@index([avatarMediaId])
+  avatarMediaId String? @db.Uuid
+  avatarMedia Media? @relation("AvatarMedia", fields:[avatarMediaId], references:[id], onDelete:SetNull)
+  uploads Media[] @relation("OwnedMedia")
+  id String @id @default(uuid()) @db.Uuid
+  email String @unique @db.VarChar(254)
+  username String @unique @db.VarChar(30)
+  displayName String @db.VarChar(80)
+  passwordHash String
+  bio String? @db.VarChar(300)
+  website String? @db.VarChar(500)
+  department String? @db.VarChar(100)
+  status AccountStatus @default(ACTIVE)
+  emailVerifiedAt DateTime?
+  legacySource String? @db.VarChar(80)
+  legacyId String? @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  roles UserRole[]
+  interests UserInterest[]
+  memberships CommunityMember[]
+  likes Like[]
+  reposts Repost[]
+  bookmarks Bookmark[]
+  views PostView[]
+  articles Article[]
+  actionTokens ActionToken[]
+  following Follow[] @relation("Following")
+  followers Follow[] @relation("Followers")
+  sessions Session[]
+  posts Post[]
+  reports Report[]
+  @@unique([legacySource, legacyId])
+}
+model Session {
+  id String @id @default(uuid()) @db.Uuid
+  tokenHash String @unique @db.Char(64)
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([userId])
+  @@index([expiresAt])
+}
+model Post {
+  threadRootId String? @db.Uuid
+  threadRoot Post? @relation("ThreadRoot",fields:[threadRootId],references:[id],onDelete:SetNull)
+  threadEntries Post[] @relation("ThreadRoot")
+  isThreadContinuation Boolean @default(false)
+  authorReply Boolean @default(false)
+  threadPublication ThreadPublication?
+  @@index([threadRootId,isThreadContinuation,createdAt,id])
+  sportsCompetitionId String? @db.Uuid
+  sportsCompetition SportsCompetition? @relation(fields:[sportsCompetitionId],references:[id],onDelete:Restrict)
+  sportsMatchId String? @db.Uuid
+  sportsMatch SportsMatch? @relation(fields:[sportsMatchId],references:[id],onDelete:Restrict)
+  @@index([sportsCompetitionId,createdAt(sort:Desc),id(sort:Desc)])
+  @@index([sportsMatchId,createdAt(sort:Desc),id(sort:Desc)])
+  pinnedBy User[] @relation("PinnedPost")
+  tokens PostToken[]
+  notifications Notification[] @relation("NotificationPost")
+  notificationContexts Notification[] @relation("NotificationContext")
+  replyPolicy String @default("EVERYONE") @db.VarChar(12)
+  replyPolicyOwnerId String? @db.Uuid
+  @@index([replyPolicyOwnerId])
+  replyPolicyOwner User? @relation("ConversationOwner",fields:[replyPolicyOwnerId],references:[id],onDelete:SetNull)
+  quotedPostId String? @db.Uuid
+  quotedPost Post? @relation("Quotes",fields:[quotedPostId],references:[id],onDelete:SetNull)
+  quotes Post[] @relation("Quotes")
+  linkPreviewId String? @db.Uuid
+  linkPreview LinkPreview? @relation(fields:[linkPreviewId],references:[id],onDelete:SetNull)
+  feedEvents FeedEvent[]
+  @@index([quotedPostId])
+  @@index([linkPreviewId])
+  @@index([imageMediaId])
+  imageMediaId String? @db.Uuid
+  imageAlt String? @db.VarChar(500)
+  imageMedia Media? @relation(fields:[imageMediaId], references:[id], onDelete:SetNull)
+  article Article?
+  id String @id @default(uuid()) @db.Uuid
+  body String @db.VarChar(1000)
+  communityId String? @db.Uuid
+  community Community? @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  topicId String? @db.Uuid
+  topic Topic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  authorId String @db.Uuid
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  parentId String? @db.Uuid
+  parent Post? @relation("Replies", fields: [parentId], references: [id], onDelete: Restrict)
+  replies Post[] @relation("Replies")
+  status PostStatus @default(PUBLISHED)
+  deletedAt DateTime?
+  legacySource String? @db.VarChar(80)
+  legacyId String? @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  reports Report[]
+  likes Like[]
+  reposts Repost[]
+  bookmarks Bookmark[]
+  views PostView[]
+  @@index([communityId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([topicId, createdAt(sort: Desc), id(sort: Desc)])
+  @@unique([legacySource, legacyId])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([authorId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([parentId, createdAt(sort: Desc), id(sort: Desc)])
+}
+model Report {
+  reviewedAt DateTime?
+  reviewedById String? @db.Uuid
+  reviewNote String? @db.VarChar(500)
+  id String @id @default(uuid()) @db.Uuid
+  reporterId String @db.Uuid
+  reporter User @relation(fields: [reporterId], references: [id], onDelete: Restrict)
+  postId String @db.Uuid
+  post Post @relation(fields: [postId], references: [id], onDelete: Restrict)
+  status String @default("OPEN") @db.VarChar(20)
+  snapshot String? @db.VarChar(1000)
+  reason ReportReason
+  details String? @db.VarChar(2000)
+  createdAt DateTime @default(now())
+  @@index([status, createdAt])
+  @@unique([reporterId, postId])
+  @@index([createdAt])
+}
+
+model Role {
+  id String @id @default(uuid()) @db.Uuid
+  key String @unique @db.VarChar(50)
+  name String @db.VarChar(80)
+  permissions String[]
+  members UserRole[]
+}
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+model Menu {
+  key String @id @db.VarChar(50)
+  label String @db.VarChar(80)
+  path String @db.VarChar(100)
+  permission String? @db.VarChar(50)
+  membersOnly Boolean @default(false)
+  enabled Boolean @default(true)
+  position Int @default(0)
+}
+model Topic {
+  id String @id @default(uuid()) @db.Uuid
+  slug String @unique @db.VarChar(60)
+  name String @db.VarChar(80)
+  interests UserInterest[]
+  posts Post[]
+}
+model UserInterest {
+  userId String @db.Uuid
+  topicId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  @@id([userId, topicId])
+}
+model Community {
+  id String @id @default(uuid()) @db.Uuid
+  slug String @unique @db.VarChar(80)
+  name String @db.VarChar(100)
+  description String @db.VarChar(1000)
+  kind String @default("INTEREST") @db.VarChar(20)
+  active Boolean @default(true)
+  members CommunityMember[]
+  posts Post[]
+}
+model CommunityMember {
+  userId String @db.Uuid
+  communityId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+  @@id([userId, communityId])
+  @@index([communityId])
+}
+model Follow {
+  postAlerts Boolean @default(false)
+  followerId String @db.Uuid
+  followingId String @db.Uuid
+  follower User @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@id([followerId, followingId])
+  @@index([followingId])
+}
+model Like {
+  userId String @db.Uuid
+  postId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@id([userId, postId])
+  @@index([postId])
+}
+model Repost {
+  userId String @db.Uuid
+  postId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@id([userId, postId])
+  @@index([postId])
+}
+model Bookmark {
+  userId String @db.Uuid
+  postId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@id([userId, postId])
+  @@index([postId])
+}
+model PostView {
+  userId String @db.Uuid
+  postId String @db.Uuid
+  day String @db.VarChar(10)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  @@id([userId, postId, day])
+  @@index([postId])
+}
+model Article {
+  @@index([coverMediaId])
+  coverMediaId String? @db.Uuid
+  coverAlt String? @db.VarChar(500)
+  coverMedia Media? @relation(fields:[coverMediaId], references:[id], onDelete:SetNull)
+  bodyFormat String @default("PLAIN") @db.VarChar(10)
+  discussionPostId String? @unique @db.Uuid
+  discussionPost Post? @relation(fields: [discussionPostId], references: [id], onDelete: Restrict)
+  id String @id @default(uuid()) @db.Uuid
+  slug String @unique @db.VarChar(120)
+  title String @db.VarChar(200)
+  excerpt String @db.VarChar(400)
+  body String @db.Text
+  status String @default("DRAFT") @db.VarChar(20)
+  authorId String @db.Uuid
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  sourceUrl String? @db.VarChar(1000)
+  legacySource String? @db.VarChar(80)
+  legacyId String? @db.VarChar(100)
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([legacySource, legacyId])
+  @@index([status, publishedAt(sort: Desc)])
+}
+model ActionToken {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose String @db.VarChar(20)
+  tokenHash String @unique @db.Char(64)
+  expiresAt DateTime
+  usedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId, purpose])
+}
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+  actorId String? @db.Uuid
+  action String @db.VarChar(80)
+  targetId String @db.VarChar(100)
+  reason String @db.VarChar(500)
+  createdAt DateTime @default(now())
+  @@index([createdAt])
+}
+
+model Media {
+  storageProvider String @default("local") @db.VarChar(10)
+  storageBucket String? @db.VarChar(100)
+  storageKey String? @db.VarChar(200)
+  sportsLogos SportsTeam[]
+  sportsPhotos SportsPlayer[]
+  profileCovers User[] @relation("ProfileCover")
+  id String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid
+  owner User @relation("OwnedMedia",fields:[ownerId],references:[id],onDelete:Cascade)
+  kind String @db.VarChar(10)
+  bytes Int
+  width Int
+  height Int
+  createdAt DateTime @default(now())
+  avatars User[] @relation("AvatarMedia")
+  posts Post[]
+  articles Article[]
+  @@index([ownerId,createdAt])
+}
+
+model LinkPreview {
+ id String @id @default(uuid()) @db.Uuid
+ url String @unique @db.VarChar(2048)
+ title String @db.VarChar(300)
+ description String @db.VarChar(600)
+ siteName String @db.VarChar(100)
+ imageBytes Bytes?
+ imageWidth Int?
+ imageHeight Int?
+ createdAt DateTime @default(now())
+ posts Post[]
+}
+model FeedEvent {
+ id String @id @default(uuid()) @db.Uuid
+ postId String @db.Uuid
+ actorId String @db.Uuid
+ kind String @db.VarChar(10)
+ createdAt DateTime @default(now())
+ post Post @relation(fields:[postId],references:[id],onDelete:Cascade)
+ actor User @relation(fields:[actorId],references:[id],onDelete:Cascade)
+ @@unique([postId,actorId,kind])
+ @@index([createdAt(sort:Desc),id(sort:Desc)])
+ @@index([actorId,createdAt(sort:Desc)])
+}
+
+model Block {
+ blockerId String @db.Uuid
+ blockedId String @db.Uuid
+ blocker User @relation("Blocker",fields:[blockerId],references:[id],onDelete:Cascade)
+ blocked User @relation("Blocked",fields:[blockedId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ @@id([blockerId,blockedId])
+ @@index([blockedId])
+}
+model Mute {
+ muterId String @db.Uuid
+ mutedId String @db.Uuid
+ muter User @relation("Muter",fields:[muterId],references:[id],onDelete:Cascade)
+ muted User @relation("Muted",fields:[mutedId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ @@id([muterId,mutedId])
+ @@index([mutedId])
+}
+
+enum NotificationKind {
+ POST_ALERT
+ MENTION
+ LIKE
+ REPLY
+ FOLLOW
+ REPOST
+ QUOTE
+}
+model Notification {
+ groupKey String @default("") @db.VarChar(200)
+ activityKind String? @db.VarChar(10)
+ @@index([recipientId,groupKey,createdAt(sort:Desc)])
+ id String @id @default(uuid()) @db.Uuid
+ eventKey String @unique @db.VarChar(160)
+ recipientId String @db.Uuid
+ actorId String @db.Uuid
+ kind NotificationKind
+ postId String? @db.Uuid
+ contextPostId String? @db.Uuid
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ readAt DateTime? @db.Timestamptz(3)
+ recipient User @relation("NotificationRecipient",fields:[recipientId],references:[id],onDelete:Cascade)
+ actor User @relation("NotificationActor",fields:[actorId],references:[id],onDelete:Cascade)
+ post Post? @relation("NotificationPost",fields:[postId],references:[id],onDelete:Cascade)
+ contextPost Post? @relation("NotificationContext",fields:[contextPostId],references:[id],onDelete:Cascade)
+ @@index([recipientId,createdAt(sort:Desc),id(sort:Desc)])
+ @@index([recipientId,readAt])
+ @@index([actorId])
+ @@index([postId])
+ @@index([contextPostId])
+}
+
+// Private working copy: never selected by public article/feed endpoints.
+model ArticleWorkingCopy {
+  author User @relation("WorkingAuthor",fields:[authorId],references:[id],onDelete:Cascade)
+  scheduledBy User? @relation("WorkingScheduler",fields:[scheduledById],references:[id],onDelete:SetNull)
+  id String @id @db.Uuid
+  authorId String @db.Uuid
+  payload Json
+  version Int @default(1)
+  publishedVersion Int @default(0)
+  scheduledAt DateTime? @db.Timestamptz(3)
+  scheduledById String? @db.Uuid
+  scheduleError String? @db.VarChar(300)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@index([scheduledAt])
+  @@index([authorId])
+}
+
+model PostToken {
+ postId String @db.Uuid
+ start Int
+ end Int
+ label String @db.VarChar(66)
+ kind String @db.VarChar(10)
+ hashtag String? @db.VarChar(64)
+ userId String? @db.Uuid
+ post Post @relation(fields:[postId],references:[id],onDelete:Cascade)
+ user User? @relation(fields:[userId],references:[id],onDelete:SetNull)
+ @@id([postId,start])
+ @@index([hashtag,postId])
+ @@index([userId])
+}
+
+model AnalyticsSettings {
+ key String @id @db.VarChar(20)
+ secret String @db.VarChar(100)
+ trackingSince DateTime @default(now()) @db.Timestamptz(3)
+ publicRankings Boolean @default(false)
+}
+model AnalyticsDay {
+ day DateTime @id @db.Date
+ visitors Int @default(0)
+ pageViews Int @default(0)
+ activeMembers Int @default(0)
+ apiRequests Int @default(0)
+ apiErrors Int @default(0)
+ apiLatencyMs Float @default(0)
+ slowRequests Int @default(0)
+}
+model AnalyticsVisitorDay {
+ day DateTime @db.Date
+ visitorHash String @db.Char(64)
+ lastSeen DateTime @db.Timestamptz(3)
+ @@id([day,visitorHash])
+}
+model AnalyticsHit {
+ hash String @id @db.Char(64)
+ day DateTime @db.Date
+ @@index([day])
+}
+model AnalyticsMember {
+ daysSeen Int @default(0)
+ userId String @id @db.Uuid
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ firstSeen DateTime @db.Timestamptz(3)
+ lastSeen DateTime @db.Timestamptz(3)
+ @@index([lastSeen])
+}
+model AnalyticsMemberDay {
+ userId String @db.Uuid
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ day DateTime @db.Date
+ lastSeen DateTime @db.Timestamptz(3)
+ @@id([userId,day])
+ @@index([day])
+}
+model AnalyticsPageDay {
+ day DateTime @db.Date
+ page String @db.VarChar(20)
+ views Int @default(0)
+ @@id([day,page])
+}
+model AnalyticsSourceDay {
+ day DateTime @db.Date
+ source String @db.VarChar(20)
+ visitors Int @default(0)
+ @@id([day,source])
+}
+model AnalyticsWeeklyReport {
+ weekStart DateTime @id @db.Date
+ weekEnd DateTime @db.Date
+ capturedAt DateTime @default(now()) @db.Timestamptz(3)
+ partial Boolean
+ publicData Json
+ adminData Json
+}
+
+model DiscoveryCard {
+ sidebar Boolean @default(true)
+ feed Boolean @default(false)
+ desktop Boolean @default(true)
+ mobile Boolean @default(true)
+ id String @id @default(uuid()) @db.Uuid
+ kind String @db.VarChar(20)
+ title String @db.VarChar(100)
+ body String @db.VarChar(400)
+ href String @db.VarChar(500)
+ enabled Boolean @default(false)
+ startsAt DateTime
+ endsAt DateTime
+ position Int @default(0)
+ updatedAt DateTime @updatedAt
+ @@index([kind, enabled, startsAt, endsAt])
+}
+
+model SportsCompetition {
+ id String @id @default(uuid()) @db.Uuid
+ name String @db.VarChar(120)
+ season String @db.VarChar(60)
+ description String @db.VarChar(1500)
+ format String @db.VarChar(20)
+ published Boolean @default(false)
+ winPoints Int @default(3)
+ drawPoints Int @default(1)
+ lossPoints Int @default(0)
+ revision Int @default(0)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ teams SportsTeam[]
+ matches SportsMatch[]
+ posts Post[]
+ @@index([published,createdAt(sort:Desc),id(sort:Desc)])
+}
+model SportsTeam {
+ logoMediaId String? @db.Uuid
+ logoMedia Media? @relation(fields:[logoMediaId],references:[id],onDelete:SetNull)
+ players SportsPlayer[]
+ goals SportsGoal[]
+ id String @id @default(uuid()) @db.Uuid
+ competitionId String @db.Uuid
+ competition SportsCompetition @relation(fields:[competitionId],references:[id],onDelete:Restrict)
+ name String @db.VarChar(100)
+ groupName String @db.VarChar(20)
+ homeMatches SportsMatch[] @relation("SportsHome")
+ awayMatches SportsMatch[] @relation("SportsAway")
+ @@unique([competitionId,name])
+}
+model SportsMatch {
+ featuredSidebar Boolean @default(true)
+ featuredFeed Boolean @default(true)
+ featuredDesktop Boolean @default(true)
+ featuredMobile Boolean @default(true)
+ goals SportsGoal[]
+ id String @id @default(uuid()) @db.Uuid
+ competitionId String @db.Uuid
+ competition SportsCompetition @relation(fields:[competitionId],references:[id],onDelete:Restrict)
+ homeId String @db.Uuid
+ home SportsTeam @relation("SportsHome",fields:[homeId],references:[id],onDelete:Restrict)
+ awayId String @db.Uuid
+ away SportsTeam @relation("SportsAway",fields:[awayId],references:[id],onDelete:Restrict)
+ stage String @db.VarChar(20)
+ kickoffAt DateTime
+ venue String @db.VarChar(120)
+ reporterId String? @db.Uuid
+ reporter User? @relation("SportsReporter",fields:[reporterId],references:[id],onDelete:SetNull)
+ featured Boolean @default(false)
+ status String @default("SCHEDULED") @db.VarChar(20)
+ homeScore Int @default(0)
+ awayScore Int @default(0)
+ homePenalties Int?
+ awayPenalties Int?
+ minute Int?
+ confirmed Boolean @default(false)
+ revision Int @default(0)
+ lastUpdateAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ updates SportsUpdate[]
+ posts Post[]
+ @@index([competitionId,kickoffAt,id])
+ @@index([reporterId,status])
+ @@index([featured,kickoffAt])
+}
+model SportsUpdate {
+ id String @id @default(uuid()) @db.Uuid
+ matchId String @db.Uuid
+ match SportsMatch @relation(fields:[matchId],references:[id],onDelete:Restrict)
+ actorId String? @db.Uuid
+ actor User? @relation("SportsUpdater",fields:[actorId],references:[id],onDelete:SetNull)
+ revision Int
+ kind String @db.VarChar(20)
+ note String @db.VarChar(500)
+ previous Json
+ current Json
+ createdAt DateTime @default(now())
+ @@unique([matchId,revision])
+}
+
+model ThreadPublication {
+ id String @id @default(uuid()) @db.Uuid
+ userId String @db.Uuid
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ requestId String @db.Uuid
+ rootPostId String @unique @db.Uuid
+ rootPost Post @relation(fields:[rootPostId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ @@unique([userId,requestId])
+}
+
+model OAuthIdentity {
+ id String @id @default(uuid()) @db.Uuid
+ provider String @db.VarChar(20)
+ subject String @db.VarChar(255)
+ userId String @db.Uuid
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ @@unique([provider,subject])
+ @@unique([userId,provider])
+}
+model OAuthChallenge {
+ id String @id @default(uuid()) @db.Uuid
+ stateHash String @unique @db.Char(64)
+ verifier String @db.VarChar(128)
+ nonce String @db.VarChar(64)
+ next String @db.VarChar(500)
+ linkUserId String? @db.Uuid
+ linkSessionId String? @db.Uuid
+ expiresAt DateTime
+ @@index([expiresAt])
+}
+model OAuthEnrollment {
+ trustedEmail Boolean @default(false)
+ id String @id @default(uuid()) @db.Uuid
+ tokenHash String @unique @db.Char(64)
+ subject String @db.VarChar(255)
+ email String @db.VarChar(254)
+ displayName String @db.VarChar(80)
+ next String @db.VarChar(500)
+ expiresAt DateTime
+ @@index([expiresAt])
+}
+model ChatConversation {
+ id String @id @default(uuid()) @db.Uuid
+ lowId String @db.Uuid
+ highId String @db.Uuid
+ requesterId String @db.Uuid
+ low User @relation("ChatLow",fields:[lowId],references:[id],onDelete:Cascade)
+ high User @relation("ChatHigh",fields:[highId],references:[id],onDelete:Cascade)
+ requester User @relation("ChatRequester",fields:[requesterId],references:[id],onDelete:Cascade)
+ acceptedAt DateTime? @db.Timestamptz(3)
+ declinedAt DateTime? @db.Timestamptz(3)
+ lowReadAt DateTime @default(dbgenerated("'1970-01-01'::timestamptz")) @db.Timestamptz(3)
+ highReadAt DateTime @default(dbgenerated("'1970-01-01'::timestamptz")) @db.Timestamptz(3)
+ lowReadId String @default("00000000-0000-0000-0000-000000000000") @db.Uuid
+ highReadId String @default("00000000-0000-0000-0000-000000000000") @db.Uuid
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ messages ChatMessage[]
+ @@unique([lowId,highId])
+ @@index([lowId,updatedAt(sort:Desc),id(sort:Desc)])
+ @@index([highId,updatedAt(sort:Desc),id(sort:Desc)])
+}
+model ChatMessage {
+ id String @id @default(uuid()) @db.Uuid
+ conversationId String @db.Uuid
+ conversation ChatConversation @relation(fields:[conversationId],references:[id],onDelete:Cascade)
+ senderId String @db.Uuid
+ sender User @relation(fields:[senderId],references:[id],onDelete:Cascade)
+ requestId String @db.Uuid
+ body String @db.VarChar(2000)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ reports ChatReport[]
+ @@unique([senderId,requestId])
+ @@index([conversationId,createdAt(sort:Desc),id(sort:Desc)])
+}
+model ChatReport {
+ id String @id @default(uuid()) @db.Uuid
+ messageId String @db.Uuid
+ message ChatMessage @relation(fields:[messageId],references:[id],onDelete:Cascade)
+ reporterId String @db.Uuid
+ reporter User @relation("ChatReporter",fields:[reporterId],references:[id],onDelete:Cascade)
+ reason ReportReason
+ details String @db.VarChar(2000)
+ snapshot String @db.VarChar(2000)
+ status String @default("OPEN") @db.VarChar(12)
+ reviewNote String? @db.VarChar(2000)
+ reviewerId String? @db.Uuid
+ reviewer User? @relation("ChatReviewer",fields:[reviewerId],references:[id],onDelete:SetNull)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ @@unique([reporterId,messageId])
+ @@index([status,createdAt(sort:Desc)])
+}
+
+model SportsPlayer {
+ id String @id @default(uuid()) @db.Uuid
+ teamId String @db.Uuid
+ team SportsTeam @relation(fields:[teamId],references:[id],onDelete:Restrict)
+ name String @db.VarChar(80)
+ shirtNumber Int?
+ userId String? @db.Uuid
+ user User? @relation(fields:[userId],references:[id],onDelete:SetNull)
+ photoMediaId String? @db.Uuid
+ photoMedia Media? @relation(fields:[photoMediaId],references:[id],onDelete:SetNull)
+ goals SportsGoal[]
+ @@unique([teamId,shirtNumber])
+ @@index([userId])
+}
+model SportsGoal {
+ id String @id @default(uuid()) @db.Uuid
+ matchId String @db.Uuid
+ match SportsMatch @relation(fields:[matchId],references:[id],onDelete:Restrict)
+ teamId String @db.Uuid
+ team SportsTeam @relation(fields:[teamId],references:[id],onDelete:Restrict)
+ playerId String? @db.Uuid
+ player SportsPlayer? @relation(fields:[playerId],references:[id],onDelete:SetNull)
+ scorerName String? @db.VarChar(80)
+ minute Int
+ kind String @db.VarChar(12)
+ note String @db.VarChar(500)
+ requestId String @db.Uuid
+ voided Boolean @default(false)
+ createdAt DateTime @default(now())
+ @@unique([matchId,requestId])
+ @@index([matchId,minute,id])
+}
+
+model FeatureSwitch {
+ key String @id @db.VarChar(40)
+ enabled Boolean @default(true)
+}
+
+model FeedSnapshot {
+ id String @id @default(uuid()) @db.Uuid
+ userId String @db.Uuid
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ eventIds Json
+ createdAt DateTime @default(now())
+ expiresAt DateTime
+ @@index([expiresAt])
+ @@index([userId,createdAt])
+}
+
+model PushDevice {
+ id String @id @default(uuid()) @db.Uuid
+ userId String @db.Uuid
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ sessionId String @db.Uuid
+ endpoint String @unique @db.VarChar(2048)
+ p256dh String @db.VarChar(128)
+ auth String @db.VarChar(64)
+ cursor DateTime @default(now()) @db.Timestamptz(3)
+ failures Int @default(0)
+ nextAttempt DateTime @default(now()) @db.Timestamptz(3)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ @@index([userId])
+}
+model InstallObservation {
+ id String @id @db.Uuid
+ platform String @db.VarChar(12)
+ confirmed Boolean @default(false)
+ launches Int @default(0)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ lastSeen DateTime @default(now()) @db.Timestamptz(3)
+}
+model AdCampaign {
+ id String @id @default(uuid()) @db.Uuid
+ ownerId String @db.Uuid
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+ name String @db.VarChar(100)
+ body String @db.VarChar(280)
+ link String? @db.VarChar(1000)
+ sourcePostId String? @db.Uuid
+ communityId String? @db.Uuid
+ placement String @default("FEED") @db.VarChar(12)
+ budgetKobo Int
+ startAt DateTime @db.Timestamptz(3)
+ endAt DateTime @db.Timestamptz(3)
+ status String @default("DRAFT") @db.VarChar(12)
+ reviewNote String? @db.VarChar(500)
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ @@index([ownerId,createdAt(sort:Desc)])
+ @@index([status,createdAt(sort:Desc)])
+}

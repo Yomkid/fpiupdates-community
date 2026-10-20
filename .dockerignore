@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.test-dist
+**/test-results
+**/playwright-report
+**/.env
+**/.env.*
+**/.uploads
+**/.local-mail
+**/backups
+**/coverage
+.git
+**/*.log
+**/*.zip
+**/client_secret*.json
+**/credentials*.json

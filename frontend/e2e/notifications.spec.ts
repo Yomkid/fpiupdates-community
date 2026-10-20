@@ -1,0 +1,31 @@
+import {test,expect as baseExpect} from '@playwright/test';
+const expect=baseExpect.configure({timeout:15000});
+test('notification inbox shows unread badges, opens replies, preserves read state and respects muting',async({page})=>{
+ test.setTimeout(120000);const suffix=Date.now().toString();const actorUsername='notify'+suffix;const body='Notification browser root '+suffix;
+ await page.goto('/register');await page.getByLabel('Display name',{exact:true}).fill('Inbox Member');await page.getByLabel('Username',{exact:true}).fill('inbox'+suffix);await page.getByLabel('Email address',{exact:true}).fill('inbox'+suffix+'@example.test');await page.getByLabel('Password',{exact:true}).fill('notification browser password 123');await page.getByRole('button',{name:'Create your account'}).click();
+ await page.getByLabel('Your post',{exact:true}).fill(body);await page.getByRole('button',{name:'Post',exact:true}).click();const posted=page.locator('.toast').filter({hasText:'Post sent.'});await expect(posted).toBeVisible();const rootId=(await posted.getByRole('link',{name:'View',exact:true}).getAttribute('href'))!.split('/').at(-1)!;
+ const me=await(await page.request.get('/api/v1/auth/me')).json();
+ const registration=await page.request.post('/api/v1/auth/register',{data:{displayName:'Campus Notifier',username:actorUsername,email:actorUsername+'@example.test',password:'notification actor password 123'}});expect(registration.status()).toBe(201);const actor=await registration.json();
+ const headers={Authorization:'Bearer '+actor.accessToken};
+ expect((await page.request.put(`/api/v1/social/users/${me.id}/follow`,{headers,data:{}})).status()).toBe(200);
+ const reply=await page.request.post('/api/v1/posts',{headers,data:{body:'A reply for your inbox '+suffix,parentId:rootId}});expect(reply.status()).toBe(201);const replyId=(await reply.json()).id;
+ expect((await page.request.put(`/api/v1/social/posts/${rootId}/reposts`,{headers,data:{}})).status()).toBe(200);
+ expect((await page.request.post('/api/v1/posts',{headers,data:{body:'A quote for your inbox '+suffix,quotedPostId:rootId}})).status()).toBe(201);
+ await page.goto('/notifications');await expect(page.locator('.notification-row')).toHaveCount(4);await expect(page.locator('.left-sidebar nav').getByRole('link',{name:'Notifications, 4 unread',exact:true})).toBeVisible();
+ if(process.env.E2E_SCREENSHOT_DIR)await page.screenshot({path:process.env.E2E_SCREENSHOT_DIR+'/notifications-desktop.png',fullPage:true});
+ const replyRow=page.locator('.notification-row').filter({hasText:'replied to your post'});await replyRow.locator('.notification-main').click();await expect(page).toHaveURL('/posts/'+replyId);await expect(page.getByText('A reply for your inbox '+suffix,{exact:true})).toBeVisible();
+ await page.goto('/notifications');await page.reload();await expect(page.locator('.notification-row.is-unread')).toHaveCount(3);
+ const follow=page.locator('.notification-row').filter({hasText:'followed you'});await follow.getByRole('button',{name:`Mark notification from @${actorUsername} as read`,exact:true}).click();await expect(page.locator('.notification-row.is-unread')).toHaveCount(2);
+ await page.getByRole('button',{name:/^Unread/}).click();await expect(page.locator('.notification-row')).toHaveCount(2);
+ expect((await page.request.post('/api/v1/posts',{headers,data:{body:'New arrival after opening inbox',parentId:rootId}})).status()).toBe(201);
+ await page.getByRole('button',{name:'Mark all as read',exact:true}).click();await expect(page.locator('.notification-row')).toHaveCount(1);await expect(page.locator('.notification-row')).toContainText('New arrival after opening inbox');
+ await page.getByRole('button',{name:'Mark all as read',exact:true}).click();await expect(page.getByRole('heading',{name:'You’re all caught up.',exact:true})).toBeVisible();await expect(page.locator('.left-sidebar nav').getByRole('link',{name:'Notifications',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'All',exact:true}).click();await expect(page.locator('.notification-row')).toHaveCount(5);await page.locator('.notification-row').filter({hasText:'followed you'}).locator('.notification-main').click();await expect(page).toHaveURL('/u/'+actorUsername);
+ await page.getByRole('button',{name:'Mute @'+actorUsername,exact:true}).click();await expect(page.getByRole('button',{name:'Unmute @'+actorUsername,exact:true})).toBeVisible();await page.goto('/notifications');await expect(page.locator('.notification-row')).toHaveCount(0);
+ await page.goto('/u/'+actorUsername);await page.getByRole('button',{name:'Unmute @'+actorUsername,exact:true}).click();await expect(page.getByRole('button',{name:'Mute @'+actorUsername,exact:true})).toBeVisible();
+ expect((await page.request.post('/api/v1/posts',{headers,data:{body:'Unread on mobile',parentId:rootId}})).status()).toBe(201);
+ await page.setViewportSize({width:390,height:844});await page.goto('/notifications');await expect(page.locator('.notification-row.is-unread')).toHaveCount(1);await expect(page.locator('.mobile-header').getByRole('link',{name:'Notifications, 1 unread',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();if(process.env.E2E_SCREENSHOT_DIR)await page.screenshot({path:process.env.E2E_SCREENSHOT_DIR+'/notifications-mobile.png',fullPage:true});
+ await page.goto('/u/'+me.username);await page.locator('main').getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.locator('main').getByRole('button',{name:'Sign out',exact:true})).toHaveCount(0);
+ await page.goto('/login');await page.getByLabel('Email address',{exact:true}).fill(actorUsername+'@example.test');await page.getByLabel('Password',{exact:true}).fill('notification actor password 123');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByLabel('Your post',{exact:true})).toBeVisible();await page.locator('.mobile-header').getByRole('link',{name:'Notifications',exact:true}).click();await expect(page.getByRole('heading',{name:'Your conversations start here.',exact:true})).toBeVisible();await expect(page.locator('.mobile-header .unread-badge')).toHaveCount(0);await expect(page.getByText('Unread on mobile',{exact:true})).toHaveCount(0);
+
+});
