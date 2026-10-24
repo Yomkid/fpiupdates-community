@@ -1,0 +1,156 @@
+name: Build cPanel package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DATABASE_URL: postgresql://build:build@127.0.0.1:5432/build
+      VITE_API_URL: /api/v1
+
+    steps:
+      - name: Get project
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npm run prisma:generate
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Prepare deployment files
+        shell: python
+        run: |
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          source = Path(os.environ["GITHUB_WORKSPACE"])
+          bundle = Path(os.environ["RUNNER_TEMP"]) / "cpanel-package"
+          backend = bundle / "fpiupdates/backend"
+          frontend = bundle / "fpiupdates/frontend"
+          backend.mkdir(parents=True)
+          frontend.mkdir(parents=True)
+
+          def ignore(directory, names):
+              excluded = []
+              for name in names:
+                  lower = name.lower()
+                  if (
+                      name.startswith(".")
+                      or name in {"node_modules", "backups", "coverage"}
+                      or lower.startswith(("credentials", "client_secret"))
+                      or (
+                          lower.endswith((".log", ".zip", ".sql", ".dump", ".pem", ".key", ".pfx", ".p12", ".bak"))
+                          and name != "migration.sql"
+                      )
+                  ):
+                      excluded.append(name)
+              return excluded
+
+          for name in ("dist", "prisma", "scripts"):
+              original = source / "backend" / name
+              if original.exists():
+                  shutil.copytree(original, backend / name, ignore=ignore)
+
+          for name in ("package.json", "package-lock.json", "prisma.config.ts"):
+              shutil.copy2(source / "backend" / name, backend / name)
+
+          shutil.copytree(source / "frontend/dist", frontend / "dist", ignore=ignore)
+
+          (backend / "app.js").write_text(
+              "'use strict';\n"
+              "const path = require('node:path');\n"
+              "process.chdir(__dirname);\n"
+              "process.env.NODE_ENV = 'production';\n"
+              "process.env.SERVE_FRONTEND = 'true';\n"
+              "process.env.FRONTEND_DIRECTORY = path.resolve(__dirname, '../frontend/dist');\n"
+              "require('./dist/main.js');\n"
+          )
+
+          manifest = backend / "package.json"
+          package = json.loads(manifest.read_text())
+          dependencies = package.setdefault("dependencies", {})
+          development = package.setdefault("devDependencies", {})
+          if "prisma" not in dependencies:
+              dependencies["prisma"] = development["prisma"]
+          development.pop("prisma", None)
+          package.setdefault("scripts", {}).update({
+              "start": "node app.js",
+              "cpanel:prepare": "prisma generate"
+          })
+          manifest.write_text(json.dumps(package, indent=2) + "\n")
+
+          (bundle / "DEPLOYMENT.txt").write_text(
+              "Extract into the cPanel home directory, outside public_html.\n"
+              "Application root: fpiupdates/backend\n"
+              "Startup file: app.js\n"
+              "Install dependencies on cPanel, then run cpanel:prepare.\n"
+              "Configure real environment variables separately in cPanel.\n"
+          )
+
+          for required in (
+              backend / "dist/main.js",
+              backend / "prisma/schema.prisma",
+              frontend / "dist/index.html"
+          ):
+              if not required.is_file():
+                  raise RuntimeError(f"Missing required file: {required}")
+
+      - name: Update deployment dependency lock
+        working-directory: ${{ runner.temp }}/cpanel-package/fpiupdates/backend
+        run: npm install --package-lock-only --ignore-scripts --include=dev --no-audit --no-fund
+
+      - name: Create upload ZIP
+        shell: python
+        run: |
+          import os
+          import zipfile
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "cpanel-package"
+          target = Path(os.environ["GITHUB_WORKSPACE"]) / "FpiUpdates-cPanel-Upload.zip"
+
+          with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+              for item in sorted(root.rglob("*")):
+                  if item.is_symlink():
+                      raise RuntimeError("Unexpected symbolic link")
+                  if item.is_file():
+                      archive.write(item, item.relative_to(root).as_posix())
+
+      - name: Save downloadable package
+        uses: actions/upload-artifact@v7
+        with:
+          name: FpiUpdates-cPanel-Package
+          path: FpiUpdates-cPanel-Upload.zip
+          retention-days: 3
+          if-no-files-found: error
