@@ -3,37 +3,497 @@ import { Link, useNavigationType, useSearchParams } from 'react-router-dom';
 import { Search, X, Users, FileText, Hash, ArrowUpRight } from 'lucide-react';
 import { api, errorMessage, mediaUrl, type Article, type Community, type User } from './api';
 import { Avatar, ErrorBox, PostList, BioText } from './components';
-import {PeopleSuggestions} from './People';
-import {useFeatures} from './Features';
+import { PeopleSuggestions } from './People';
+import { useFeatures } from './Features';
 import { FollowAction, JoinPrompt } from './Conversations';
 import { DiscoveryPanels } from './Discovery';
 import { BackButton } from './Navigation';
 import { useSession } from './session';
-type SearchType='posts'|'people'|'articles'|'communities';
-type Result=User|Article|Community;
-type Results={data:Result[];nextCursor:string|null;requiresLogin:boolean};
-const tabs:SearchType[]=['posts','people','articles','communities'];
-const cache=new Map<string,{page:Results;time:number}>();
-function ResultList({q,type}:{q:string;type:Exclude<SearchType,'posts'>}){
- const {user}=useSession(),navigationType=useNavigationType();const key=(user?.id??'guest')+':'+type+':'+q;const restore=useRef(navigationType==='POP'?cache.get(key):undefined);const [page,setPage]=useState<Results|null>(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [retry,setRetry]=useState(0);const alive=useRef(true);const moreController=useRef<AbortController|null>(null);
- function save(value:Results){cache.set(key,{page:value,time:Date.now()});if(cache.size>30)cache.delete(cache.keys().next().value!);setPage(value);}
- useEffect(()=>{alive.current=true;const c=new AbortController();setError('');const old=restore.current;if(retry===0&&old&&Date.now()-old.time<300000){setPage(old.page);return()=>{alive.current=false;moreController.current?.abort();};}setPage(null);api<Results>('/search?'+new URLSearchParams({q,type,limit:'15'}),{signal:c.signal}).then(p=>{if(!c.signal.aborted)save(p);}).catch(e=>{if(!c.signal.aborted)setError(errorMessage(e));});return()=>{alive.current=false;c.abort();moreController.current?.abort();};},[q,type,user?.id,retry]);
- useEffect(()=>{const update=(event:Event)=>{const d=(event as CustomEvent<{userId:string;accountId:string;following:boolean}>).detail;if(type==='people'&&d.userId===user?.id)setPage(old=>old?{...old,data:old.data.map(item=>item.id===d.accountId?{...item,isFollowing:d.following}:item)}:old);};window.addEventListener('follow-updated',update);return()=>window.removeEventListener('follow-updated',update);},[type,user?.id]);
- useEffect(()=>{const invalidate=()=>{cache.clear();setRetry(v=>v+1);};window.addEventListener('feed-updated',invalidate);return()=>window.removeEventListener('feed-updated',invalidate);},[]);
- async function more(){if(!page?.nextCursor||busy)return;setBusy(true);setError('');const c=new AbortController();moreController.current=c;try{const next=await api<Results>('/search?'+new URLSearchParams({q,type,limit:'15',cursor:page.nextCursor}),{signal:c.signal});if(alive.current&&!c.signal.aborted)save({...next,data:[...page.data,...next.data.filter(n=>!page.data.some(old=>old.id===n.id))]});}catch(e){if(alive.current&&!c.signal.aborted)setError(errorMessage(e));}finally{if(alive.current)setBusy(false);}}
- return <section className="search-result-list" aria-label={type+' results'}>{error&&<ErrorBox message={error} retry={()=>setRetry(v=>v+1)}/ >}{!page&&!error&&<p className="page-panel" role="status">Searching {type}…</p>}{page?.data.map(item=>type==='people'?<article className="search-person" key={item.id}><Link to={'/u/'+(item as User).username}><Avatar user={item as User}/></Link><div className="search-person-info"><Link className="author-name" to={'/u/'+(item as User).username}>{(item as User).displayName}</Link><p className="muted">@{(item as User).username}</p>{(item as User).bio&&<p><BioText text={(item as User).bio!}/></p>}</div><FollowAction author={item as User}/></article>:type==='articles'?<article className="search-article" key={item.id}>{(item as Article).coverMediaId&&<Link to={'/articles/'+(item as Article).slug}><img src={mediaUrl((item as Article).coverMediaId!)} alt={(item as Article).coverAlt??''} loading="lazy"/></Link>}<div><span className="search-kind"><FileText size={14}/>Article</span><h2><Link to={'/articles/'+(item as Article).slug}>{(item as Article).title}</Link></h2><p>{(item as Article).excerpt}</p><small>By {(item as Article).author.displayName} · {new Date((item as Article).publishedAt!).toLocaleDateString('en-NG',{month:'short',day:'numeric',year:'numeric'})}</small></div></article>:<article className="search-community" key={item.id}><span className="search-community-icon"><Users size={23}/></span><div><span className="search-kind">{(item as Community).kind.toLowerCase().replaceAll('_',' ')}</span><h2><Link to={'/communities/'+(item as Community).slug}>{(item as Community).name}</Link></h2><p>{(item as Community).description}</p><small>{(item as Community)._count.members.toLocaleString()} members · Public community</small></div><Link className="icon-button" aria-label={'Open '+(item as Community).name} to={'/communities/'+(item as Community).slug}><ArrowUpRight size={20}/></Link></article>)}{page&&!page.data.length&&!error&&<div className="empty-state"><Search size={30}/><h2>No {type} found</h2><p>Try another spelling or a shorter phrase.</p></div>}{page?.requiresLogin&&<JoinPrompt/>}{page?.nextCursor&&<div className="load-more"><button className="button secondary" disabled={busy} onClick={()=>void more()}>{busy?'Loading…':'More '+type}</button></div>}</section>;
+type SearchType = 'posts' | 'people' | 'articles' | 'communities';
+type Result = User | Article | Community;
+type Results = { data: Result[]; nextCursor: string | null; requiresLogin: boolean };
+const tabs: SearchType[] = ['posts', 'people', 'articles', 'communities'];
+const cache = new Map<string, { page: Results; time: number }>();
+function ResultList({ q, type }: { q: string; type: Exclude<SearchType, 'posts'> }) {
+  const { user } = useSession(),
+    navigationType = useNavigationType();
+  const key = (user?.id ?? 'guest') + ':' + type + ':' + q;
+  const restore = useRef(navigationType === 'POP' ? cache.get(key) : undefined);
+  const [page, setPage] = useState<Results | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const alive = useRef(true);
+  const moreController = useRef<AbortController | null>(null);
+  function save(value: Results) {
+    cache.set(key, { page: value, time: Date.now() });
+    if (cache.size > 30) cache.delete(cache.keys().next().value!);
+    setPage(value);
+  }
+  useEffect(() => {
+    alive.current = true;
+    const c = new AbortController();
+    setError('');
+    const old = restore.current;
+    if (retry === 0 && old && Date.now() - old.time < 300000) {
+      setPage(old.page);
+      return () => {
+        alive.current = false;
+        moreController.current?.abort();
+      };
+    }
+    setPage(null);
+    api<Results>('/search?' + new URLSearchParams({ q, type, limit: '15' }), { signal: c.signal })
+      .then((p) => {
+        if (!c.signal.aborted) save(p);
+      })
+      .catch((e) => {
+        if (!c.signal.aborted) setError(errorMessage(e));
+      });
+    return () => {
+      alive.current = false;
+      c.abort();
+      moreController.current?.abort();
+    };
+  }, [q, type, user?.id, retry]);
+  useEffect(() => {
+    const update = (event: Event) => {
+      const d = (event as CustomEvent<{ userId: string; accountId: string; following: boolean }>)
+        .detail;
+      if (type === 'people' && d.userId === user?.id)
+        setPage((old) =>
+          old
+            ? {
+                ...old,
+                data: old.data.map((item) =>
+                  item.id === d.accountId ? { ...item, isFollowing: d.following } : item,
+                ),
+              }
+            : old,
+        );
+    };
+    window.addEventListener('follow-updated', update);
+    return () => window.removeEventListener('follow-updated', update);
+  }, [type, user?.id]);
+  useEffect(() => {
+    const invalidate = () => {
+      cache.clear();
+      setRetry((v) => v + 1);
+    };
+    window.addEventListener('feed-updated', invalidate);
+    return () => window.removeEventListener('feed-updated', invalidate);
+  }, []);
+  async function more() {
+    if (!page?.nextCursor || busy) return;
+    setBusy(true);
+    setError('');
+    const c = new AbortController();
+    moreController.current = c;
+    try {
+      const next = await api<Results>(
+        '/search?' + new URLSearchParams({ q, type, limit: '15', cursor: page.nextCursor }),
+        { signal: c.signal },
+      );
+      if (alive.current && !c.signal.aborted)
+        save({
+          ...next,
+          data: [
+            ...page.data,
+            ...next.data.filter((n) => !page.data.some((old) => old.id === n.id)),
+          ],
+        });
+    } catch (e) {
+      if (alive.current && !c.signal.aborted) setError(errorMessage(e));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
+  return (
+    <section className="search-result-list" aria-label={type + ' results'}>
+      {error && <ErrorBox message={error} retry={() => setRetry((v) => v + 1)} />}
+      {!page && !error && (
+        <p className="page-panel" role="status">
+          Searching {type}…
+        </p>
+      )}
+      {page?.data.map((item) =>
+        type === 'people' ? (
+          <article className="search-person" key={item.id}>
+            <Link to={'/u/' + (item as User).username}>
+              <Avatar user={item as User} />
+            </Link>
+            <div className="search-person-info">
+              <Link className="author-name" to={'/u/' + (item as User).username}>
+                {(item as User).displayName}
+              </Link>
+              <p className="muted">@{(item as User).username}</p>
+              {(item as User).bio && (
+                <p>
+                  <BioText text={(item as User).bio!} />
+                </p>
+              )}
+            </div>
+            <FollowAction author={item as User} />
+          </article>
+        ) : type === 'articles' ? (
+          <article className="search-article" key={item.id}>
+            {(item as Article).coverMediaId && (
+              <Link to={'/articles/' + (item as Article).slug}>
+                <img
+                  src={mediaUrl((item as Article).coverMediaId!)}
+                  alt={(item as Article).coverAlt ?? ''}
+                  loading="lazy"
+                />
+              </Link>
+            )}
+            <div>
+              <span className="search-kind">
+                <FileText size={14} />
+                Article
+              </span>
+              <h2>
+                <Link to={'/articles/' + (item as Article).slug}>{(item as Article).title}</Link>
+              </h2>
+              <p>{(item as Article).excerpt}</p>
+              <small>
+                By {(item as Article).author.displayName} ·{' '}
+                {new Date((item as Article).publishedAt!).toLocaleDateString('en-NG', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </small>
+            </div>
+          </article>
+        ) : (
+          <article className="search-community" key={item.id}>
+            <span className="search-community-icon">
+              <Users size={23} />
+            </span>
+            <div>
+              <span className="search-kind">
+                {(item as Community).kind.toLowerCase().replaceAll('_', ' ')}
+              </span>
+              <h2>
+                <Link to={'/communities/' + (item as Community).slug}>
+                  {(item as Community).name}
+                </Link>
+              </h2>
+              <p>{(item as Community).description}</p>
+              <small>
+                {(item as Community)._count.members.toLocaleString()} members · Public community
+              </small>
+            </div>
+            <Link
+              className="icon-button"
+              aria-label={'Open ' + (item as Community).name}
+              to={'/communities/' + (item as Community).slug}
+            >
+              <ArrowUpRight size={20} />
+            </Link>
+          </article>
+        ),
+      )}
+      {page && !page.data.length && !error && (
+        <div className="empty-state">
+          <Search size={30} />
+          <h2>No {type} found</h2>
+          <p>Try another spelling or a shorter phrase.</p>
+        </div>
+      )}
+      {page?.requiresLogin && <JoinPrompt />}
+      {page?.nextCursor && (
+        <div className="load-more">
+          <button className="button secondary" disabled={busy} onClick={() => void more()}>
+            {busy ? 'Loading…' : 'More ' + type}
+          </button>
+        </div>
+      )}
+    </section>
+  );
 }
 // Safety changes must also invalidate searches that are not currently mounted.
-window.addEventListener('feed-updated',()=>cache.clear());
-window.addEventListener('follow-updated',event=>{const d=(event as CustomEvent<{userId:string;accountId:string;following:boolean}>).detail;for(const [key,value]of cache)if(key.startsWith(d.userId+':people:'))value.page={...value.page,data:value.page.data.map(item=>item.id===d.accountId?{...item,isFollowing:d.following}:item)};});
-export function SearchPage(){
- const {flags}=useFeatures();const [exploreTab,setExploreTab]=useState('discover');const {user}=useSession();const [params,setParams]=useSearchParams();const q=(params.get('q')??'').trim().slice(0,80);const rawType=params.get('type')??'posts';const type=tabs.includes(rawType as SearchType)?rawType as SearchType:'posts';const topicId=params.get('topicId');const media=params.get('media')==='true';const [draft,setDraft]=useState(q);const [focused,setFocused]=useState(false);const [people,setPeople]=useState<User[]>([]);const [tags,setTags]=useState<{tag:string}[]>([]);const suggest=draft.trim();const input=useRef<HTMLInputElement>(null);
- useEffect(()=>{if(!flags.sports&&exploreTab==='sports')setExploreTab('discover');},[flags.sports,exploreTab]);
- useEffect(()=>setDraft(q),[q]);
- useEffect(()=>{setPeople([]);setTags([]);if(!focused||suggest.length<2)return;const c=new AbortController();const timer=setTimeout(()=>{const query=suggest.replace(/^@/,'');api<Results>('/search?'+new URLSearchParams({q:query,type:'people',limit:'3'}),{signal:c.signal}).then(p=>{if(!c.signal.aborted)setPeople(p.data as User[]);}).catch(()=>{});const tag=suggest.replace(/^#/,'');if(/^[\p{L}\p{N}_]{1,64}$/u.test(tag))api<{tag:string}[]>('/discovery/hashtags?'+new URLSearchParams({q:tag}),{signal:c.signal}).then(t=>{if(!c.signal.aborted)setTags(t.slice(0,3));}).catch(()=>{});},300);return()=>{clearTimeout(timer);c.abort();};},[suggest,focused,user?.id]);
- function search(value=draft){const clean=value.trim().slice(0,80);setParams(clean?{q:clean,type}:{});setFocused(false);input.current?.blur();}
- const scoped=/^from:[a-z0-9_]{3,30}(?:\s|$)/i.test(q);
- function changeTab(next:SearchType){const nextParams=new URLSearchParams(params);nextParams.set('type',next);if(next!=='posts'){nextParams.delete('media');nextParams.delete('topicId');}setParams(nextParams);setFocused(false);}
- const postQuery=new URLSearchParams({...q?{q}:{},...topicId?{topicId}:{},...media?{mediaOnly:'true'}:{}});
- return <><div className="explore-search-header"><BackButton/><div className="search-entry"><form className="large-search" role="search" onSubmit={e=>{e.preventDefault();search();}}><Search size={20}/><label className="sr-only" htmlFor="explore-search">Search FpiUpdates</label><input ref={input} id="explore-search" value={draft} maxLength={80} autoComplete="off" onChange={e=>setDraft(e.target.value)} onFocus={()=>setFocused(true)} onBlur={e=>{if(!e.currentTarget.parentElement?.parentElement?.contains(e.relatedTarget as Node))setFocused(false);}} onKeyDown={e=>{if(e.key==='Escape')setFocused(false);}} placeholder="Search FpiUpdates or from:username"/>{draft&&<button type="button" className="icon-button" aria-label="Clear search" onClick={()=>{setDraft('');input.current?.focus();}}><X size={17}/></button>}<button className="button primary small">Search</button></form>{focused&&suggest.length>=2&&<div className="search-suggestions" aria-label="Search suggestions"><button className="search-suggestion" onMouseDown={e=>e.preventDefault()} onClick={()=>search()}><Search size={17}/><span>Search for “{suggest}”</span></button>{people.map(p=><Link className="search-suggestion" key={p.id} to={'/u/'+p.username} onMouseDown={e=>e.preventDefault()} onClick={()=>setFocused(false)}><Avatar user={p}/><span><strong>{p.displayName}</strong><small>@{p.username}</small></span></Link>)}{tags.map(t=><Link className="search-suggestion" key={t.tag} to={'/tags/'+encodeURIComponent(t.tag)} onMouseDown={e=>e.preventDefault()} onClick={()=>setFocused(false)}><Hash size={18}/><span>#{t.tag}</span></Link>)}</div>}</div></div>{(q||topicId)&&<><nav className="feature-tabs search-tabs" aria-label="Search categories">{(scoped?['posts'] as SearchType[]:tabs).map(t=><button key={t} disabled={!q&&t!=='posts'} aria-pressed={type===t} className={type===t?'active':''} onClick={()=>changeTab(t)}>{t[0].toUpperCase()+t.slice(1)}</button>)}</nav><div className="search-results-heading"><p>{q?<>Results for <strong>“{q}”</strong></>:<>Posts in the selected topic</>}</p>{type==='posts'&&<label className="search-media-filter"><input type="checkbox" checked={media} onChange={e=>{const next=new URLSearchParams(params);e.target.checked?next.set('media','true'):next.delete('media');setParams(next);}}/>Images only</label>}</div>{type==='posts'?<PostList endpoint={'/posts?'+postQuery} emptyTitle="No matching posts" emptyText="Try a different phrase or remove the image filter."/>:q?<ResultList key={(user?.id??'guest')+type+q} type={type} q={q}/>:<p className="page-panel muted">Enter a search to find {type}.</p>}</>}{!q&&!topicId&&<><nav className="feature-tabs explore-tabs" aria-label="Explore sections">{[['discover','Explore'],['topics','Topics'],['news','Articles'],...(flags.sports?[['sports','Sports']]:[]),['people','People']].map(([key,label])=><button key={key} className={exploreTab===key?'active':''} onClick={()=>setExploreTab(key)}>{label}</button>)}</nav>{exploreTab==='discover'&&<><div className="explore-discovery"><DiscoveryPanels/></div><PeopleSuggestions/><section className="explore-posts"><h2>Community conversations</h2><PostList endpoint="/posts?mode=latest"/></section></>}{exploreTab==='topics'&&<div className="explore-discovery"><DiscoveryPanels section="topics"/></div>}{exploreTab==='news'&&<div className="explore-discovery"><DiscoveryPanels section="articles"/></div>}{exploreTab==='sports'&&flags.sports&&<div className="explore-discovery"><DiscoveryPanels section="sports"/><Link className="button secondary" to="/sports">All competitions →</Link></div>}{exploreTab==='people'&&<PeopleSuggestions/>}</>}</>;
+window.addEventListener('feed-updated', () => cache.clear());
+window.addEventListener('follow-updated', (event) => {
+  const d = (event as CustomEvent<{ userId: string; accountId: string; following: boolean }>)
+    .detail;
+  for (const [key, value] of cache)
+    if (key.startsWith(d.userId + ':people:'))
+      value.page = {
+        ...value.page,
+        data: value.page.data.map((item) =>
+          item.id === d.accountId ? { ...item, isFollowing: d.following } : item,
+        ),
+      };
+});
+export function SearchPage() {
+  const { flags } = useFeatures();
+  const [exploreTab, setExploreTab] = useState('discover');
+  const { user } = useSession();
+  const [params, setParams] = useSearchParams();
+  const q = (params.get('q') ?? '').trim().slice(0, 80);
+  const rawType = params.get('type') ?? 'posts';
+  const type = tabs.includes(rawType as SearchType) ? (rawType as SearchType) : 'posts';
+  const topicId = params.get('topicId');
+  const media = params.get('media') === 'true';
+  const [draft, setDraft] = useState(q);
+  const [focused, setFocused] = useState(false);
+  const [people, setPeople] = useState<User[]>([]);
+  const [tags, setTags] = useState<{ tag: string }[]>([]);
+  const suggest = draft.trim();
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!flags.sports && exploreTab === 'sports') setExploreTab('discover');
+  }, [flags.sports, exploreTab]);
+  useEffect(() => setDraft(q), [q]);
+  useEffect(() => {
+    setPeople([]);
+    setTags([]);
+    if (!focused || suggest.length < 2) return;
+    const c = new AbortController();
+    const timer = setTimeout(() => {
+      const query = suggest.replace(/^@/, '');
+      api<Results>('/search?' + new URLSearchParams({ q: query, type: 'people', limit: '3' }), {
+        signal: c.signal,
+      })
+        .then((p) => {
+          if (!c.signal.aborted) setPeople(p.data as User[]);
+        })
+        .catch(() => {});
+      const tag = suggest.replace(/^#/, '');
+      if (/^[\p{L}\p{N}_]{1,64}$/u.test(tag))
+        api<{ tag: string }[]>('/discovery/hashtags?' + new URLSearchParams({ q: tag }), {
+          signal: c.signal,
+        })
+          .then((t) => {
+            if (!c.signal.aborted) setTags(t.slice(0, 3));
+          })
+          .catch(() => {});
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      c.abort();
+    };
+  }, [suggest, focused, user?.id]);
+  function search(value = draft) {
+    const clean = value.trim().slice(0, 80);
+    setParams(clean ? { q: clean, type } : {});
+    setFocused(false);
+    input.current?.blur();
+  }
+  const scoped = /^from:[a-z0-9_]{3,30}(?:\s|$)/i.test(q);
+  function changeTab(next: SearchType) {
+    const nextParams = new URLSearchParams(params);
+    nextParams.set('type', next);
+    if (next !== 'posts') {
+      nextParams.delete('media');
+      nextParams.delete('topicId');
+    }
+    setParams(nextParams);
+    setFocused(false);
+  }
+  const postQuery = new URLSearchParams({
+    ...(q ? { q } : {}),
+    ...(topicId ? { topicId } : {}),
+    ...(media ? { mediaOnly: 'true' } : {}),
+  });
+  return (
+    <>
+      <div className="explore-search-header">
+        <BackButton />
+        <div className="search-entry">
+          <form
+            className="large-search"
+            role="search"
+            onSubmit={(e) => {
+              e.preventDefault();
+              search();
+            }}
+          >
+            <Search size={20} />
+            <label className="sr-only" htmlFor="explore-search">
+              Search FpiUpdates
+            </label>
+            <input
+              ref={input}
+              id="explore-search"
+              value={draft}
+              maxLength={80}
+              autoComplete="off"
+              onChange={(e) => setDraft(e.target.value)}
+              onFocus={() => setFocused(true)}
+              onBlur={(e) => {
+                if (
+                  !e.currentTarget.parentElement?.parentElement?.contains(e.relatedTarget as Node)
+                )
+                  setFocused(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setFocused(false);
+              }}
+              placeholder="Search FpiUpdates or from:username"
+            />
+            {draft && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Clear search"
+                onClick={() => {
+                  setDraft('');
+                  input.current?.focus();
+                }}
+              >
+                <X size={17} />
+              </button>
+            )}
+            <button className="button primary small">Search</button>
+          </form>
+          {focused && suggest.length >= 2 && (
+            <div className="search-suggestions" aria-label="Search suggestions">
+              <button
+                className="search-suggestion"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => search()}
+              >
+                <Search size={17} />
+                <span>Search for “{suggest}”</span>
+              </button>
+              {people.map((p) => (
+                <Link
+                  className="search-suggestion"
+                  key={p.id}
+                  to={'/u/' + p.username}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setFocused(false)}
+                >
+                  <Avatar user={p} />
+                  <span>
+                    <strong>{p.displayName}</strong>
+                    <small>@{p.username}</small>
+                  </span>
+                </Link>
+              ))}
+              {tags.map((t) => (
+                <Link
+                  className="search-suggestion"
+                  key={t.tag}
+                  to={'/tags/' + encodeURIComponent(t.tag)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setFocused(false)}
+                >
+                  <Hash size={18} />
+                  <span>#{t.tag}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {(q || topicId) && (
+        <>
+          <nav className="feature-tabs search-tabs" aria-label="Search categories">
+            {(scoped ? (['posts'] as SearchType[]) : tabs).map((t) => (
+              <button
+                key={t}
+                disabled={!q && t !== 'posts'}
+                aria-pressed={type === t}
+                className={type === t ? 'active' : ''}
+                onClick={() => changeTab(t)}
+              >
+                {t[0].toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </nav>
+          <div className="search-results-heading">
+            <p>
+              {q ? (
+                <>
+                  Results for <strong>“{q}”</strong>
+                </>
+              ) : (
+                <>Posts in the selected topic</>
+              )}
+            </p>
+            {type === 'posts' && (
+              <label className="search-media-filter">
+                <input
+                  type="checkbox"
+                  checked={media}
+                  onChange={(e) => {
+                    const next = new URLSearchParams(params);
+                    e.target.checked ? next.set('media', 'true') : next.delete('media');
+                    setParams(next);
+                  }}
+                />
+                Images only
+              </label>
+            )}
+          </div>
+          {type === 'posts' ? (
+            <PostList
+              endpoint={'/posts?' + postQuery}
+              emptyTitle="No matching posts"
+              emptyText="Try a different phrase or remove the image filter."
+            />
+          ) : q ? (
+            <ResultList key={(user?.id ?? 'guest') + type + q} type={type} q={q} />
+          ) : (
+            <p className="page-panel muted">Enter a search to find {type}.</p>
+          )}
+        </>
+      )}
+      {!q && !topicId && (
+        <>
+          <nav className="feature-tabs explore-tabs" aria-label="Explore sections">
+            {[
+              ['discover', 'Explore'],
+              ['topics', 'Topics'],
+              ['news', 'Articles'],
+              ...(flags.sports ? [['sports', 'Sports']] : []),
+              ['people', 'People'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                className={exploreTab === key ? 'active' : ''}
+                onClick={() => setExploreTab(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          {exploreTab === 'discover' && (
+            <>
+              <div className="explore-discovery">
+                <DiscoveryPanels />
+              </div>
+              <PeopleSuggestions />
+              <section className="explore-posts">
+                <h2>Community conversations</h2>
+                <PostList endpoint="/posts?mode=latest" />
+              </section>
+            </>
+          )}
+          {exploreTab === 'topics' && (
+            <div className="explore-discovery">
+              <DiscoveryPanels section="topics" />
+            </div>
+          )}
+          {exploreTab === 'news' && (
+            <div className="explore-discovery">
+              <DiscoveryPanels section="articles" />
+            </div>
+          )}
+          {exploreTab === 'sports' && flags.sports && (
+            <div className="explore-discovery">
+              <DiscoveryPanels section="sports" />
+              <Link className="button secondary" to="/sports">
+                All competitions →
+              </Link>
+            </div>
+          )}
+          {exploreTab === 'people' && <PeopleSuggestions />}
+        </>
+      )}
+    </>
+  );
 }

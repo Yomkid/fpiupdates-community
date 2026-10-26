@@ -1,16 +1,169 @@
-import {useEffect,useRef,useState} from 'react';
-import {Share,Copy,Bookmark,MessageCircle} from 'lucide-react';
-import {useNavigate} from 'react-router-dom';
-import {useFeatures} from './Features';
-import {useSession} from './session';
-import {useInteractions} from './interactions';
-import {toast} from './toast';
-import type {Post} from './api';
-export function MetricCount({value}:{value:number}){const [changed,setChanged]=useState(false);const before=useRef(value);useEffect(()=>{if(before.current===value)return;before.current=value;setChanged(true);const timer=setTimeout(()=>setChanged(false),450);return()=>clearTimeout(timer);},[value]);if(!value)return null;return <span className={'metric-number'+(changed?' metric-changed':'')} title={value.toLocaleString()}>{new Intl.NumberFormat('en',{notation:value>=1000?'compact':'standard',maximumFractionDigits:1}).format(value)}</span>;}
-export function ShareMenu({post,onBookmark,disabled}:{post:Post;onBookmark:()=>void;disabled:boolean}){
- const [open,setOpen]=useState(false);const ref=useRef<HTMLDivElement>(null);const {flags}=useFeatures();const {user}=useSession();const ui=useInteractions();const navigate=useNavigate();const path=post.article?'/articles/'+post.article.slug:'/posts/'+post.id;const url=location.origin+path;
- useEffect(()=>{if(!open)return;const outside=(e:PointerEvent)=>{if(!ref.current?.contains(e.target as Node))setOpen(false);};const escape=(e:KeyboardEvent)=>{if(e.key==='Escape'){setOpen(false);ref.current?.querySelector<HTMLButtonElement>(':scope>button')?.focus();}};document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape);return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape);};},[open]);
- async function copy(fallback=false){setOpen(false);try{await navigator.clipboard.writeText(url);toast(fallback?'Device sharing is unavailable here. Link copied.':'Link copied.','success');}catch{toast('Copy the post address from your browser, or open the post first.','info',{label:'Open post',href:path});}}
- async function nativeShare(){setOpen(false);if(!navigator.share){await copy(true);return;}try{await navigator.share({title:post.article?.title??'Post by '+post.author.displayName,url});}catch(e){if(e instanceof DOMException&&e.name==='AbortError')return;toast('Could not open device sharing. You can copy the link instead.','info');}}
- return <div className="share-control" ref={ref}><button className="share-trigger" aria-label="Share post" aria-expanded={open} aria-haspopup="menu" onClick={()=>setOpen(v=>!v)}><Share size={18}/></button>{open&&<div className="dropdown share-dropdown" role="menu" aria-label="Share post options" onKeyDown={e=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;e.preventDefault();const buttons=[...e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];const index=buttons.indexOf(document.activeElement as HTMLButtonElement);const next=e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;buttons[next]?.focus();}}>{flags.messages&&<button role="menuitem" onClick={()=>{setOpen(false);if(!user){ui.auth('login',()=>navigate('/messages?share='+encodeURIComponent(url)));return;}navigate('/messages?share='+encodeURIComponent(url));}}><MessageCircle size={18}/>Send via chat</button>}<button role="menuitem" onClick={()=>void copy()}><Copy size={18}/>Copy link</button><button role="menuitem" onClick={()=>void nativeShare()}><Share size={18}/>Share post via…</button><button role="menuitem" disabled={disabled} onClick={()=>{setOpen(false);onBookmark();}}><Bookmark size={18}/>{post.viewer?.bookmarked?'Remove bookmark':'Bookmark post'}</button></div>}</div>;
+import { useEffect, useRef, useState } from 'react';
+import { Share, Copy, Bookmark, MessageCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useFeatures } from './Features';
+import { useSession } from './session';
+import { useInteractions } from './interactions';
+import { toast } from './toast';
+import type { Post } from './api';
+export function MetricCount({ value }: { value: number }) {
+  const [changed, setChanged] = useState(false);
+  const before = useRef(value);
+  useEffect(() => {
+    if (before.current === value) return;
+    before.current = value;
+    setChanged(true);
+    const timer = setTimeout(() => setChanged(false), 450);
+    return () => clearTimeout(timer);
+  }, [value]);
+  if (!value) return null;
+  return (
+    <span
+      className={'metric-number' + (changed ? ' metric-changed' : '')}
+      title={value.toLocaleString()}
+    >
+      {new Intl.NumberFormat('en', {
+        notation: value >= 1000 ? 'compact' : 'standard',
+        maximumFractionDigits: 1,
+      }).format(value)}
+    </span>
+  );
+}
+export function ShareMenu({
+  post,
+  onBookmark,
+  disabled,
+}: {
+  post: Post;
+  onBookmark: () => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const { flags } = useFeatures();
+  const { user } = useSession();
+  const ui = useInteractions();
+  const navigate = useNavigate();
+  const path = post.article ? '/articles/' + post.article.slug : '/posts/' + post.id;
+  const url = location.origin + path;
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        ref.current?.querySelector<HTMLButtonElement>(':scope>button')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+  async function copy(fallback = false) {
+    setOpen(false);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast(
+        fallback ? 'Device sharing is unavailable here. Link copied.' : 'Link copied.',
+        'success',
+      );
+    } catch {
+      toast('Copy the post address from your browser, or open the post first.', 'info', {
+        label: 'Open post',
+        href: path,
+      });
+    }
+  }
+  async function nativeShare() {
+    setOpen(false);
+    if (!navigator.share) {
+      await copy(true);
+      return;
+    }
+    try {
+      await navigator.share({
+        title: post.article?.title ?? 'Post by ' + post.author.displayName,
+        url,
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      toast('Could not open device sharing. You can copy the link instead.', 'info');
+    }
+  }
+  return (
+    <div className="share-control" ref={ref}>
+      <button
+        className="share-trigger"
+        aria-label="Share post"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Share size={18} />
+      </button>
+      {open && (
+        <div
+          className="dropdown share-dropdown"
+          role="menu"
+          aria-label="Share post options"
+          onKeyDown={(e) => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+            e.preventDefault();
+            const buttons = [
+              ...e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+            ];
+            const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+            const next =
+              e.key === 'Home'
+                ? 0
+                : e.key === 'End'
+                  ? buttons.length - 1
+                  : (index + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+            buttons[next]?.focus();
+          }}
+        >
+          {flags.messages && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                if (!user) {
+                  ui.auth('login', () => navigate('/messages?share=' + encodeURIComponent(url)));
+                  return;
+                }
+                navigate('/messages?share=' + encodeURIComponent(url));
+              }}
+            >
+              <MessageCircle size={18} />
+              Send via chat
+            </button>
+          )}
+          <button role="menuitem" onClick={() => void copy()}>
+            <Copy size={18} />
+            Copy link
+          </button>
+          <button role="menuitem" onClick={() => void nativeShare()}>
+            <Share size={18} />
+            Share post via…
+          </button>
+          <button
+            role="menuitem"
+            disabled={disabled}
+            onClick={() => {
+              setOpen(false);
+              onBookmark();
+            }}
+          >
+            <Bookmark size={18} />
+            {post.viewer?.bookmarked ? 'Remove bookmark' : 'Bookmark post'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }

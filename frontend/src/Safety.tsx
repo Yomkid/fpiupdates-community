@@ -4,18 +4,224 @@ import { api, errorMessage, type User } from './api';
 import { useSession } from './session';
 import { ErrorBox, Modal } from './components';
 import { toast } from './toast';
-type State={blocked:boolean;muted:boolean};
-export function SafetyControls({account,onChange}:{account:Pick<User,'id'|'username'>;onChange?:(state:State)=>void}){
- const {user}=useSession();const [state,setState]=useState<State|null>(null);const [confirm,setConfirm]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
- useEffect(()=>{let alive=true;setState(null);if(user&&user.id!==account.id)api<State>('/safety/users/'+account.id).then(s=>{if(alive)setState(s);}).catch(e=>{if(alive)setError(errorMessage(e));});return()=>{alive=false;};},[user?.id,account.id]);
- async function change(kind:'blocks'|'mutes'){if(!state||busy)return;setBusy(true);setError('');const active=kind==='blocks'?state.blocked:state.muted;try{await api(`/safety/${kind}/${account.id}`,{method:active?'DELETE':'PUT'});setState({...state,[kind==='blocks'?'blocked':'muted']:!active});setConfirm(false);toast(kind==='blocks'?(active?'Account unblocked.':'Account blocked.'):(active?'Account unmuted.':'Account muted.'),'success');window.dispatchEvent(new Event('feed-updated'));onChange?.({...state,[kind==='blocks'?'blocked':'muted']:!active});}catch(e){setError(errorMessage(e));}finally{setBusy(false);}}
- if(!user||user.id===account.id)return null;
- return <div className="safety-controls">{state?<><button className="text-button" disabled={busy} onClick={()=>state.blocked?void change('blocks'):setConfirm(true)}>{state.blocked?'Unblock':'Block'} @{account.username}</button><button className="text-button" disabled={busy} onClick={()=>void change('mutes')}>{state.muted?'Unmute':'Mute'} @{account.username}</button></>:<span className="muted">Loading safety controls…</span>}{error&&<ErrorBox message={error}/ >}{confirm&&<Modal title={`Block @${account.username}?`} onClose={()=>{if(!busy)setConfirm(false);}}><p>You won’t see each other’s posts while signed in or be able to follow, reply, like or repost each other. Existing follows in both directions will be removed.</p><p className="muted">Public posts can still be read when signed out. Unblocking does not restore follows.</p><div className="modal-actions"><button className="button secondary" disabled={busy} onClick={()=>setConfirm(false)}>Cancel</button><button className="button danger" disabled={busy} onClick={()=>void change('blocks')}>{busy?'Blocking…':'Block account'}</button></div></Modal>}</div>;
+type State = { blocked: boolean; muted: boolean };
+export function SafetyControls({
+  account,
+  onChange,
+}: {
+  account: Pick<User, 'id' | 'username'>;
+  onChange?: (state: State) => void;
+}) {
+  const { user } = useSession();
+  const [state, setState] = useState<State | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let alive = true;
+    setState(null);
+    if (user && user.id !== account.id)
+      api<State>('/safety/users/' + account.id)
+        .then((s) => {
+          if (alive) setState(s);
+        })
+        .catch((e) => {
+          if (alive) setError(errorMessage(e));
+        });
+    return () => {
+      alive = false;
+    };
+  }, [user?.id, account.id]);
+  async function change(kind: 'blocks' | 'mutes') {
+    if (!state || busy) return;
+    setBusy(true);
+    setError('');
+    const active = kind === 'blocks' ? state.blocked : state.muted;
+    try {
+      await api(`/safety/${kind}/${account.id}`, { method: active ? 'DELETE' : 'PUT' });
+      setState({ ...state, [kind === 'blocks' ? 'blocked' : 'muted']: !active });
+      setConfirm(false);
+      toast(
+        kind === 'blocks'
+          ? active
+            ? 'Account unblocked.'
+            : 'Account blocked.'
+          : active
+            ? 'Account unmuted.'
+            : 'Account muted.',
+        'success',
+      );
+      window.dispatchEvent(new Event('feed-updated'));
+      onChange?.({ ...state, [kind === 'blocks' ? 'blocked' : 'muted']: !active });
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!user || user.id === account.id) return null;
+  return (
+    <div className="safety-controls">
+      {state ? (
+        <>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => (state.blocked ? void change('blocks') : setConfirm(true))}
+          >
+            {state.blocked ? 'Unblock' : 'Block'} @{account.username}
+          </button>
+          <button className="text-button" disabled={busy} onClick={() => void change('mutes')}>
+            {state.muted ? 'Unmute' : 'Mute'} @{account.username}
+          </button>
+        </>
+      ) : (
+        <span className="muted">Loading safety controls…</span>
+      )}
+      {error && <ErrorBox message={error} />}
+      {confirm && (
+        <Modal
+          title={`Block @${account.username}?`}
+          onClose={() => {
+            if (!busy) setConfirm(false);
+          }}
+        >
+          <p>
+            You won’t see each other’s posts while signed in or be able to follow, reply, like or
+            repost each other. Existing follows in both directions will be removed.
+          </p>
+          <p className="muted">
+            Public posts can still be read when signed out. Unblocking does not restore follows.
+          </p>
+          <div className="modal-actions">
+            <button className="button secondary" disabled={busy} onClick={() => setConfirm(false)}>
+              Cancel
+            </button>
+            <button className="button danger" disabled={busy} onClick={() => void change('blocks')}>
+              {busy ? 'Blocking…' : 'Block account'}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
 }
-type SafetyPage={blocks:{blocked:User}[];mutes:{muted:User}[];nextCursor:string|null};
-export function SafetySettings(){const {user,loading}=useSession();const [data,setData]=useState<SafetyPage|null>(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [refresh,setRefresh]=useState(0);
- useEffect(()=>{let alive=true;setData(null);if(user)api<SafetyPage>('/safety').then(x=>{if(alive)setData(x);}).catch(e=>{if(alive)setError(errorMessage(e));});return()=>{alive=false;};},[user?.id,refresh]);
- async function more(){if(!data?.nextCursor||busy)return;setBusy(true);try{const page=await api<SafetyPage>('/safety?before='+data.nextCursor);setData(old=>old?{blocks:[...old.blocks,...page.blocks],mutes:[...old.mutes,...page.mutes],nextCursor:page.nextCursor}:page);}catch(e){setError(errorMessage(e));}finally{setBusy(false);}}
- async function remove(kind:'blocks'|'mutes',id:string){if(busy)return;setBusy(true);setError('');try{await api(`/safety/${kind}/${id}`,{method:'DELETE'});toast(kind==='blocks'?'Account unblocked.':'Account unmuted.','success');setRefresh(n=>n+1);window.dispatchEvent(new Event('feed-updated'));}catch(e){setError(errorMessage(e));}finally{setBusy(false);}}
- return <section className="page-panel safety-settings"><Link className="text-button" to="/settings">← Settings</Link><h1>Blocked & muted accounts</h1><p>Blocking prevents interaction while signed in and removes follows in both directions. Muting hides an account from your feeds, search results and reply lists. You can still visit a muted profile.</p><p className="muted">Your lists are private. Accounts are not notified. Public posts remain accessible when signed out. Blocking does not submit a report; report harmful posts separately.</p>{error&&<ErrorBox message={error} retry={()=>setRefresh(n=>n+1)}/ >}{loading?<p>Checking account…</p>:!user?<Link to="/login">Sign in to manage safety settings.</Link>:!data?<p>Loading your lists…</p>:<>{(['blocks','mutes'] as const).map(kind=><section key={kind}><h2>{kind==='blocks'?'Blocked accounts':'Muted accounts'}</h2>{!data[kind].length&&<p className="muted">No accounts on this page.</p>}{data[kind].map(item=>{const account='blocked' in item?item.blocked:item.muted;return <div className="safety-list-row" key={account.id}><Link to={'/u/'+account.username}><strong>{account.displayName}</strong><span>@{account.username}</span></Link><button className="button secondary small" disabled={busy} onClick={()=>void remove(kind,account.id)}>{kind==='blocks'?'Unblock':'Unmute'}</button></div>;})}</section>)}{data.nextCursor&&<button className="button secondary" disabled={busy} onClick={()=>void more()}>Load more accounts</button>}</>}</section>;
+type SafetyPage = {
+  blocks: { blocked: User }[];
+  mutes: { muted: User }[];
+  nextCursor: string | null;
+};
+export function SafetySettings() {
+  const { user, loading } = useSession();
+  const [data, setData] = useState<SafetyPage | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setData(null);
+    if (user)
+      api<SafetyPage>('/safety')
+        .then((x) => {
+          if (alive) setData(x);
+        })
+        .catch((e) => {
+          if (alive) setError(errorMessage(e));
+        });
+    return () => {
+      alive = false;
+    };
+  }, [user?.id, refresh]);
+  async function more() {
+    if (!data?.nextCursor || busy) return;
+    setBusy(true);
+    try {
+      const page = await api<SafetyPage>('/safety?before=' + data.nextCursor);
+      setData((old) =>
+        old
+          ? {
+              blocks: [...old.blocks, ...page.blocks],
+              mutes: [...old.mutes, ...page.mutes],
+              nextCursor: page.nextCursor,
+            }
+          : page,
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(kind: 'blocks' | 'mutes', id: string) {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/safety/${kind}/${id}`, { method: 'DELETE' });
+      toast(kind === 'blocks' ? 'Account unblocked.' : 'Account unmuted.', 'success');
+      setRefresh((n) => n + 1);
+      window.dispatchEvent(new Event('feed-updated'));
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="page-panel safety-settings">
+      <Link className="text-button" to="/settings">
+        ← Settings
+      </Link>
+      <h1>Blocked & muted accounts</h1>
+      <p>
+        Blocking prevents interaction while signed in and removes follows in both directions. Muting
+        hides an account from your feeds, search results and reply lists. You can still visit a
+        muted profile.
+      </p>
+      <p className="muted">
+        Your lists are private. Accounts are not notified. Public posts remain accessible when
+        signed out. Blocking does not submit a report; report harmful posts separately.
+      </p>
+      {error && <ErrorBox message={error} retry={() => setRefresh((n) => n + 1)} />}
+      {loading ? (
+        <p>Checking account…</p>
+      ) : !user ? (
+        <Link to="/login">Sign in to manage safety settings.</Link>
+      ) : !data ? (
+        <p>Loading your lists…</p>
+      ) : (
+        <>
+          {(['blocks', 'mutes'] as const).map((kind) => (
+            <section key={kind}>
+              <h2>{kind === 'blocks' ? 'Blocked accounts' : 'Muted accounts'}</h2>
+              {!data[kind].length && <p className="muted">No accounts on this page.</p>}
+              {data[kind].map((item) => {
+                const account = 'blocked' in item ? item.blocked : item.muted;
+                return (
+                  <div className="safety-list-row" key={account.id}>
+                    <Link to={'/u/' + account.username}>
+                      <strong>{account.displayName}</strong>
+                      <span>@{account.username}</span>
+                    </Link>
+                    <button
+                      className="button secondary small"
+                      disabled={busy}
+                      onClick={() => void remove(kind, account.id)}
+                    >
+                      {kind === 'blocks' ? 'Unblock' : 'Unmute'}
+                    </button>
+                  </div>
+                );
+              })}
+            </section>
+          ))}
+          {data.nextCursor && (
+            <button className="button secondary" disabled={busy} onClick={() => void more()}>
+              Load more accounts
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
 }

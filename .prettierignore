@@ -1,0 +1,9 @@
+**/node_modules/
+**/dist/
+**/build/
+**/coverage/
+**/generated/
+**/.prisma/
+**/uploads/
+**/backups/
+**/package-lock.json

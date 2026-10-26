@@ -5,23 +5,486 @@ import { BackButton } from './Navigation';
 import { useInteractions } from './interactions';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowRight, BookOpen, Check, Settings, Users, ShieldCheck, ExternalLink } from 'lucide-react';
+import {
+  ArrowRight,
+  BookOpen,
+  Check,
+  Settings,
+  Users,
+  ShieldCheck,
+  ExternalLink,
+} from 'lucide-react';
 import { useToastNotice } from './toast';
 import { UsernameField, PersonalFields } from './ProfileFields';
 import { ImageUpload } from './ImageUpload';
-import { api, mediaUrl, errorMessage, type Topic, type Community, type Article, type User } from './api';
+import {
+  api,
+  mediaUrl,
+  errorMessage,
+  type Topic,
+  type Community,
+  type Article,
+  type User,
+} from './api';
 import { Composer, ErrorBox, LinkText, PostList, PostCard } from './components';
 import { safeArticleHtml } from './article-html';
 import { useSession } from './session';
-export function PageHeading({title,subtitle}:{title:string;subtitle?:string}){return <div className="page-heading"><BackButton/><div><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</div></div>;}
-export function InterestChoices({topics,selected,onChange}:{topics:Topic[];selected:string[];onChange:(ids:string[])=>void}){return <fieldset className="interest-choices"><legend>Your interests <small>(choose up to 10)</small></legend><div>{topics.map(t=><label key={t.id}><input type="checkbox" checked={selected.includes(t.id)} disabled={!selected.includes(t.id)&&selected.length>=10} onChange={()=>onChange(selected.includes(t.id)?selected.filter(id=>id!==t.id):[...selected,t.id])}/>{t.name}</label>)}</div></fieldset>;}
-export {SettingsPage} from './Settings';
-export function RecoveryPage({mode}:{mode:'forgot'|'reset'|'verify'}){const session=useSession();const [token]=useState(()=>new URLSearchParams(window.location.hash.slice(1)).get('token')??'');const [notice,setNotice]=useState('');useToastNotice(notice);const [error,setError]=useState('');const [busy,setBusy]=useState(false);useEffect(()=>{if(token)history.replaceState(history.state,'',window.location.pathname);},[token]);async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);setError('');try{const form=new FormData(e.currentTarget);const result=await api<{message:string}>(`/account/${mode==='forgot'?'forgot-password':mode==='reset'?'reset-password':'verify-email'}`,{method:'POST',body:JSON.stringify(mode==='forgot'?{email:form.get('email')}:mode==='reset'?{token,password:form.get('password')}:{token})});setNotice(result.message);if(mode==='verify')await session.refresh();}catch(e){setError(errorMessage(e));}finally{setBusy(false);}}
- return <><PageHeading title={mode==='forgot'?'Forgot your password?':mode==='reset'?'Choose a new password':'Verify your email'}/><section className="page-panel"><form className="feature-form" onSubmit={submit}>{mode==='forgot'?<label>Email address<input name="email" type="email" required autoComplete="email"/></label>:mode==='reset'?<label>New password<input name="password" type="password" required minLength={12} maxLength={128} autoComplete="new-password"/></label>:<p>Confirm this email belongs to your FpiUpdates account.</p>}{mode!=='forgot'&&!token?<ErrorBox message="Open the complete link from your email. If it expired, request another."/>:<button className="button primary" disabled={busy||!!notice}>{busy?'Please wait…':mode==='forgot'?'Send recovery instructions':mode==='reset'?'Change password':'Confirm email'}</button>}{error&&<ErrorBox message={error}/>}<Link className="text-button" to="/login">Back to sign in <ArrowRight size={14}/></Link></form></section></>;}
-export function BookmarksPage(){const {user}=useSession();return <><PageHeading title="Your bookmarks" subtitle="Keep useful conversations close. Only you can see your saved list."/>{user?<PostList endpoint="/social/bookmarks" emptyTitle="Save something worth coming back to." emptyText="Use the bookmark button on any post."/>:<div className="page-panel"><Link to="/login">Sign in to see your bookmarks.</Link></div>}</>;}
-export function CommunitiesPage(){const ui=useInteractions();const {slug}=useParams();const session=useSession();const navigate=useNavigate();const [items,setItems]=useState<Community[]>([]);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [refresh,setRefresh]=useState(0);useEffect(()=>{let active=true;api<Community[]>('/catalog/communities').then(rows=>{if(active)setItems(rows);}).catch(e=>{if(active)setError(errorMessage(e));}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[refresh,session.user?.id]);const current=items.find(x=>x.slug===slug);async function join(c:Community){if(!session.user){ui.auth();return;}try{await api(`/catalog/communities/${c.id}/join`,{method:c.joined?'DELETE':'PUT'});setRefresh(n=>n+1);}catch(e){setError(errorMessage(e));}}
- return <><PageHeading title={current?.name??'Communities'} subtitle="Departments, shared interests and familiar faces."/>{error&&<ErrorBox message={error}/ >}{loading?<p className="page-panel">Loading communities…</p>:slug?current?<><section className="community-banner"><span className="pill">{current.kind}</span><h2>{current.name}</h2><p>{current.description}</p><div><span>{current._count.members} members</span><button className="button primary small" onClick={()=>void join(current)}>{current.joined?'Leave community':'Join community'}</button></div></section>{current.joined?<Composer communityId={current.id} onPublished={()=>setRefresh(n=>n+1)}/>:<p className="page-panel muted">Join this community to post and reply. Conversations are public.</p>}<PostList endpoint={`/posts?communityId=${current.id}`} refreshKey={refresh}/></>:<ErrorBox message="Community not found or inactive."/>:<div className="community-grid">{items.map(c=><section className="community-card" key={c.id}><span className="feature-icon"><Users size={22}/></span><span className="pill">{c.kind}</span><h2><Link to={`/communities/${c.slug}`}>{c.name}</Link></h2><p>{c.description}</p><div><span>{c._count.members} members</span><button className="button secondary small" onClick={()=>void join(c)}>{c.joined?'Joined · leave':'Join'}</button></div></section>)}</div>}</>;}
-export function ArticlesPage(){const {slug}=useParams();const session=useSession();const [refresh,setRefresh]=useState(0);const [items,setItems]=useState<Article[]>([]);const [article,setArticle]=useState<Article|null>(null);const [error,setError]=useState('');const [loading,setLoading]=useState(true);useEffect(()=>{const c=new AbortController();setLoading(true);setError('');if(slug)api<Article>(`/articles/${slug}`,{signal:c.signal}).then(setArticle).catch(e=>{if(!c.signal.aborted)setError(errorMessage(e));}).finally(()=>{if(!c.signal.aborted)setLoading(false);});else api<Article[]>('/articles',{signal:c.signal}).then(setItems).catch(e=>{if(!c.signal.aborted)setError(errorMessage(e));}).finally(()=>{if(!c.signal.aborted)setLoading(false);});return()=>c.abort();},[slug]);return <><PageHeading title="Articles & updates" subtitle="Guides, announcements and stories that deserve a little more room."/>{error&&<ErrorBox message={error}/ >}{loading?<p className="page-panel">Loading articles…</p>:slug&&article?<article className="article-page"><span className="eyebrow">{article.legacySource?'FROM THE ARCHIVE':'FPIUPDATES ARTICLE'}</span>{article.coverMediaId&&<img className="article-cover" src={mediaUrl(article.coverMediaId)} alt={article.coverAlt??''}/>}<h1>{article.title}</h1><p className="article-byline">By {article.author.displayName} · {article.publishedAt&&new Date(article.publishedAt).toLocaleDateString()}</p><p className="article-excerpt">{article.excerpt}</p><div className="article-body">{article.bodyFormat==='HTML'?<div dangerouslySetInnerHTML={{__html:safeArticleHtml(article.body??'')}}/>:<LinkText text={article.body??''}/>}</div>{article.sourceUrl&&<a className="text-button" href={article.sourceUrl} target="_blank" rel="noopener noreferrer">Read source <ExternalLink size={14}/></a>}</article>:<div className="page-panel">{items.length?items.map(a=><article className="article-summary" key={a.id}>{a.coverMediaId&&<Link to={`/articles/${a.slug}`}><img className="article-cover-card" src={mediaUrl(a.coverMediaId)} alt={a.coverAlt??''} loading="lazy"/></Link>}<span className="eyebrow">{a.legacySource?'ARCHIVE':'LATEST ARTICLE'}</span><h2><Link to={`/articles/${a.slug}`}>{a.title}</Link></h2><p>{a.excerpt}</p><Link className="text-button" to={`/articles/${a.slug}`}>Read article <ArrowRight size={14}/></Link></article>):<div className="empty-state"><BookOpen size={32}/><h2>A fresh chapter is coming.</h2><p>New articles and recovered archive content will appear here. No old content has been imported yet.</p></div>}</div>}{!loading&&slug&&article?.discussion&&<section aria-label="Article discussion"><div className="feed-intro"><h2>Discussion</h2></div><PostCard post={article.discussion} discussionOnly/>{session.user?<Composer parentId={article.discussion.id} onPublished={()=>setRefresh(n=>n+1)}/>:<p className="page-panel"><Link to="/login">Sign in to join the discussion</Link></p>}<PostList endpoint={`/posts/${article.discussion.id}/replies`} refreshKey={refresh} emptyTitle="Discuss this article" emptyText="Share a thought or ask a question."/></section>}</>;}
-export function FollowButton({profile,onChange}:{profile:User;onChange:()=>void}){const ui=useInteractions();const session=useSession();const navigate=useNavigate();const [error,setError]=useState('');const [busy,setBusy]=useState(false);if(session.user?.id===profile.id)return null;return <><button className="button secondary small follow-action" aria-pressed={!!profile.isFollowing} disabled={busy||session.loading} onClick={async()=>{if(!session.user){ui.auth();return;}setBusy(true);try{await api(`/social/users/${profile.id}/follow`,{method:profile.isFollowing?'DELETE':'PUT'});window.dispatchEvent(new CustomEvent('follow-updated',{detail:{userId:session.user.id,accountId:profile.id,following:!profile.isFollowing}}));onChange();}catch(e){setError(errorMessage(e));}finally{setBusy(false);}}}>{profile.isFollowing?'Following':'Follow'}</button>{error&&<ErrorBox message={error}/>}</>;}
-export function MyProfileRedirect(){const session=useSession();const navigate=useNavigate();useEffect(()=>{if(!session.loading)navigate(session.user?`/u/${session.user.username}`:'/login',{replace:true});},[session.loading,session.user,navigate]);return <p className="page-panel">Opening your profile…</p>;}
+export function PageHeading({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="page-heading">
+      <BackButton />
+      <div>
+        <h1>{title}</h1>
+        {subtitle && <p>{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+export function InterestChoices({
+  topics,
+  selected,
+  onChange,
+}: {
+  topics: Topic[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  return (
+    <fieldset className="interest-choices">
+      <legend>
+        Your interests <small>(choose up to 10)</small>
+      </legend>
+      <div>
+        {topics.map((t) => (
+          <label key={t.id}>
+            <input
+              type="checkbox"
+              checked={selected.includes(t.id)}
+              disabled={!selected.includes(t.id) && selected.length >= 10}
+              onChange={() =>
+                onChange(
+                  selected.includes(t.id)
+                    ? selected.filter((id) => id !== t.id)
+                    : [...selected, t.id],
+                )
+              }
+            />
+            {t.name}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+export { SettingsPage } from './Settings';
+export function RecoveryPage({ mode }: { mode: 'forgot' | 'reset' | 'verify' }) {
+  const session = useSession();
+  const [token] = useState(
+    () => new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '',
+  );
+  const [notice, setNotice] = useState('');
+  useToastNotice(notice);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (token) history.replaceState(history.state, '', window.location.pathname);
+  }, [token]);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const form = new FormData(e.currentTarget);
+      const result = await api<{ message: string }>(
+        `/account/${mode === 'forgot' ? 'forgot-password' : mode === 'reset' ? 'reset-password' : 'verify-email'}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(
+            mode === 'forgot'
+              ? { email: form.get('email') }
+              : mode === 'reset'
+                ? { token, password: form.get('password') }
+                : { token },
+          ),
+        },
+      );
+      setNotice(result.message);
+      if (mode === 'verify') await session.refresh();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <PageHeading
+        title={
+          mode === 'forgot'
+            ? 'Forgot your password?'
+            : mode === 'reset'
+              ? 'Choose a new password'
+              : 'Verify your email'
+        }
+      />
+      <section className="page-panel">
+        <form className="feature-form" onSubmit={submit}>
+          {mode === 'forgot' ? (
+            <label>
+              Email address
+              <input name="email" type="email" required autoComplete="email" />
+            </label>
+          ) : mode === 'reset' ? (
+            <label>
+              New password
+              <input
+                name="password"
+                type="password"
+                required
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
+              />
+            </label>
+          ) : (
+            <p>Confirm this email belongs to your FpiUpdates account.</p>
+          )}
+          {mode !== 'forgot' && !token ? (
+            <ErrorBox message="Open the complete link from your email. If it expired, request another." />
+          ) : (
+            <button className="button primary" disabled={busy || !!notice}>
+              {busy
+                ? 'Please wait…'
+                : mode === 'forgot'
+                  ? 'Send recovery instructions'
+                  : mode === 'reset'
+                    ? 'Change password'
+                    : 'Confirm email'}
+            </button>
+          )}
+          {error && <ErrorBox message={error} />}
+          <Link className="text-button" to="/login">
+            Back to sign in <ArrowRight size={14} />
+          </Link>
+        </form>
+      </section>
+    </>
+  );
+}
+export function BookmarksPage() {
+  const { user } = useSession();
+  return (
+    <>
+      <PageHeading
+        title="Your bookmarks"
+        subtitle="Keep useful conversations close. Only you can see your saved list."
+      />
+      {user ? (
+        <PostList
+          endpoint="/social/bookmarks"
+          emptyTitle="Save something worth coming back to."
+          emptyText="Use the bookmark button on any post."
+        />
+      ) : (
+        <div className="page-panel">
+          <Link to="/login">Sign in to see your bookmarks.</Link>
+        </div>
+      )}
+    </>
+  );
+}
+export function CommunitiesPage() {
+  const ui = useInteractions();
+  const { slug } = useParams();
+  const session = useSession();
+  const navigate = useNavigate();
+  const [items, setItems] = useState<Community[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    let active = true;
+    api<Community[]>('/catalog/communities')
+      .then((rows) => {
+        if (active) setItems(rows);
+      })
+      .catch((e) => {
+        if (active) setError(errorMessage(e));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [refresh, session.user?.id]);
+  const current = items.find((x) => x.slug === slug);
+  async function join(c: Community) {
+    if (!session.user) {
+      ui.auth();
+      return;
+    }
+    try {
+      await api(`/catalog/communities/${c.id}/join`, { method: c.joined ? 'DELETE' : 'PUT' });
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+  return (
+    <>
+      <PageHeading
+        title={current?.name ?? 'Communities'}
+        subtitle="Departments, shared interests and familiar faces."
+      />
+      {error && <ErrorBox message={error} />}
+      {loading ? (
+        <p className="page-panel">Loading communities…</p>
+      ) : slug ? (
+        current ? (
+          <>
+            <section className="community-banner">
+              <span className="pill">{current.kind}</span>
+              <h2>{current.name}</h2>
+              <p>{current.description}</p>
+              <div>
+                <span>{current._count.members} members</span>
+                <button className="button primary small" onClick={() => void join(current)}>
+                  {current.joined ? 'Leave community' : 'Join community'}
+                </button>
+              </div>
+            </section>
+            {current.joined ? (
+              <Composer communityId={current.id} onPublished={() => setRefresh((n) => n + 1)} />
+            ) : (
+              <p className="page-panel muted">
+                Join this community to post and reply. Conversations are public.
+              </p>
+            )}
+            <PostList endpoint={`/posts?communityId=${current.id}`} refreshKey={refresh} />
+          </>
+        ) : (
+          <ErrorBox message="Community not found or inactive." />
+        )
+      ) : (
+        <div className="community-grid">
+          {items.map((c) => (
+            <section className="community-card" key={c.id}>
+              <span className="feature-icon">
+                <Users size={22} />
+              </span>
+              <span className="pill">{c.kind}</span>
+              <h2>
+                <Link to={`/communities/${c.slug}`}>{c.name}</Link>
+              </h2>
+              <p>{c.description}</p>
+              <div>
+                <span>{c._count.members} members</span>
+                <button className="button secondary small" onClick={() => void join(c)}>
+                  {c.joined ? 'Joined · leave' : 'Join'}
+                </button>
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+export function ArticlesPage() {
+  const { slug } = useParams();
+  const session = useSession();
+  const [refresh, setRefresh] = useState(0);
+  const [items, setItems] = useState<Article[]>([]);
+  const [article, setArticle] = useState<Article | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const c = new AbortController();
+    setLoading(true);
+    setError('');
+    if (slug)
+      api<Article>(`/articles/${slug}`, { signal: c.signal })
+        .then(setArticle)
+        .catch((e) => {
+          if (!c.signal.aborted) setError(errorMessage(e));
+        })
+        .finally(() => {
+          if (!c.signal.aborted) setLoading(false);
+        });
+    else
+      api<Article[]>('/articles', { signal: c.signal })
+        .then(setItems)
+        .catch((e) => {
+          if (!c.signal.aborted) setError(errorMessage(e));
+        })
+        .finally(() => {
+          if (!c.signal.aborted) setLoading(false);
+        });
+    return () => c.abort();
+  }, [slug]);
+  return (
+    <>
+      <PageHeading
+        title="Articles & updates"
+        subtitle="Guides, announcements and stories that deserve a little more room."
+      />
+      {error && <ErrorBox message={error} />}
+      {loading ? (
+        <p className="page-panel">Loading articles…</p>
+      ) : slug && article ? (
+        <article className="article-page">
+          <span className="eyebrow">
+            {article.legacySource ? 'FROM THE ARCHIVE' : 'FPIUPDATES ARTICLE'}
+          </span>
+          {article.coverMediaId && (
+            <img
+              className="article-cover"
+              src={mediaUrl(article.coverMediaId)}
+              alt={article.coverAlt ?? ''}
+            />
+          )}
+          <h1>{article.title}</h1>
+          <p className="article-byline">
+            By {article.author.displayName} ·{' '}
+            {article.publishedAt && new Date(article.publishedAt).toLocaleDateString()}
+          </p>
+          <p className="article-excerpt">{article.excerpt}</p>
+          <div className="article-body">
+            {article.bodyFormat === 'HTML' ? (
+              <div dangerouslySetInnerHTML={{ __html: safeArticleHtml(article.body ?? '') }} />
+            ) : (
+              <LinkText text={article.body ?? ''} />
+            )}
+          </div>
+          {article.sourceUrl && (
+            <a
+              className="text-button"
+              href={article.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Read source <ExternalLink size={14} />
+            </a>
+          )}
+        </article>
+      ) : (
+        <div className="page-panel">
+          {items.length ? (
+            items.map((a) => (
+              <article className="article-summary" key={a.id}>
+                {a.coverMediaId && (
+                  <Link to={`/articles/${a.slug}`}>
+                    <img
+                      className="article-cover-card"
+                      src={mediaUrl(a.coverMediaId)}
+                      alt={a.coverAlt ?? ''}
+                      loading="lazy"
+                    />
+                  </Link>
+                )}
+                <span className="eyebrow">{a.legacySource ? 'ARCHIVE' : 'LATEST ARTICLE'}</span>
+                <h2>
+                  <Link to={`/articles/${a.slug}`}>{a.title}</Link>
+                </h2>
+                <p>{a.excerpt}</p>
+                <Link className="text-button" to={`/articles/${a.slug}`}>
+                  Read article <ArrowRight size={14} />
+                </Link>
+              </article>
+            ))
+          ) : (
+            <div className="empty-state">
+              <BookOpen size={32} />
+              <h2>A fresh chapter is coming.</h2>
+              <p>
+                New articles and recovered archive content will appear here. No old content has been
+                imported yet.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+      {!loading && slug && article?.discussion && (
+        <section aria-label="Article discussion">
+          <div className="feed-intro">
+            <h2>Discussion</h2>
+          </div>
+          <PostCard post={article.discussion} discussionOnly />
+          {session.user ? (
+            <Composer
+              parentId={article.discussion.id}
+              onPublished={() => setRefresh((n) => n + 1)}
+            />
+          ) : (
+            <p className="page-panel">
+              <Link to="/login">Sign in to join the discussion</Link>
+            </p>
+          )}
+          <PostList
+            endpoint={`/posts/${article.discussion.id}/replies`}
+            refreshKey={refresh}
+            emptyTitle="Discuss this article"
+            emptyText="Share a thought or ask a question."
+          />
+        </section>
+      )}
+    </>
+  );
+}
+export function FollowButton({ profile, onChange }: { profile: User; onChange: () => void }) {
+  const ui = useInteractions();
+  const session = useSession();
+  const navigate = useNavigate();
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (session.user?.id === profile.id) return null;
+  return (
+    <>
+      <button
+        className="button secondary small follow-action"
+        aria-pressed={!!profile.isFollowing}
+        disabled={busy || session.loading}
+        onClick={async () => {
+          if (!session.user) {
+            ui.auth();
+            return;
+          }
+          setBusy(true);
+          try {
+            await api(`/social/users/${profile.id}/follow`, {
+              method: profile.isFollowing ? 'DELETE' : 'PUT',
+            });
+            window.dispatchEvent(
+              new CustomEvent('follow-updated', {
+                detail: {
+                  userId: session.user.id,
+                  accountId: profile.id,
+                  following: !profile.isFollowing,
+                },
+              }),
+            );
+            onChange();
+          } catch (e) {
+            setError(errorMessage(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {profile.isFollowing ? 'Following' : 'Follow'}
+      </button>
+      {error && <ErrorBox message={error} />}
+    </>
+  );
+}
+export function MyProfileRedirect() {
+  const session = useSession();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!session.loading)
+      navigate(session.user ? `/u/${session.user.username}` : '/login', { replace: true });
+  }, [session.loading, session.user, navigate]);
+  return <p className="page-panel">Opening your profile…</p>;
+}
 export { EditorialPage } from './Publishing';

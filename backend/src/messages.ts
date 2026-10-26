@@ -1,44 +1,472 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { Transform,Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { AuthRequest, publicUser, SessionGuard } from './auth';
 import { Database } from './database';
 import { visibleAuthor } from './post-visibility';
 import { safetyTransaction } from './safety-transaction';
 import { decodeCursor } from './posts';
-import { VerifiedGuard,PermissionGuard,RequirePermission } from './permissions';
+import { VerifiedGuard, PermissionGuard, RequirePermission } from './permissions';
 import { ReportDto } from './dtos';
-class SendDto { @Transform(({value})=>typeof value==='string'?value.trim():value) @IsString() @MinLength(1) @MaxLength(2000) body!:string;@IsUUID() requestId!:string; }
-class StartDto extends SendDto { @Transform(({value})=>typeof value==='string'?value.trim().toLowerCase().replace(/^@/,''):value) @Matches(/^[a-z0-9_]{3,30}$/) username!:string; }
-class ReadDto { @IsUUID() messageId!:string; }
-class PolicyDto { @IsIn(['REQUESTS','FOLLOWING','NOBODY']) policy!:string; }
-class ChatQuery { @IsOptional() @IsIn(['inbox','requests']) folder='inbox';@IsOptional() @IsString() @MaxLength(300) cursor?:string;@IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(50) limit=20; }
-class ReviewDto { @IsIn(['OPEN','RESOLVED']) status!:string;@Transform(({value})=>typeof value==='string'?value.trim():value) @IsString() @MinLength(1) @MaxLength(2000) note!:string; }
-const messageFields={id:true,conversationId:true,senderId:true,body:true,createdAt:true} as const;
-function conversationWhere(viewer:string):Prisma.ChatConversationWhereInput{return {AND:[{OR:[{lowId:viewer},{highId:viewer}]},{low:visibleAuthor(viewer),high:visibleAuthor(viewer)}]};}
-@Controller('messages') @UseGuards(SessionGuard)
-export class MessagesController {
- constructor(private readonly db:Database){}
- @Get('count') async count(@Req()req:AuthRequest){
-  const viewer=req.account.id;const [counts]=await this.db.$queryRaw<{unread:bigint;requests:bigint}[]>(Prisma.sql`SELECT count(DISTINCT c.id) FILTER(WHERE c."acceptedAt" IS NOT NULL AND m."senderId"<>${viewer}::uuid AND (m."createdAt",m.id)>(CASE WHEN c."lowId"=${viewer}::uuid THEN c."lowReadAt" ELSE c."highReadAt" END, CASE WHEN c."lowId"=${viewer}::uuid THEN c."lowReadId" ELSE c."highReadId" END)) AS unread, count(DISTINCT c.id) FILTER(WHERE c."acceptedAt" IS NULL AND c."requesterId"<>${viewer}::uuid) AS requests FROM "ChatConversation" c JOIN "User" lo ON lo.id=c."lowId" JOIN "User" hi ON hi.id=c."highId" LEFT JOIN "ChatMessage" m ON m."conversationId"=c.id WHERE (c."lowId"=${viewer}::uuid OR c."highId"=${viewer}::uuid) AND c."declinedAt" IS NULL AND lo.status='ACTIVE' AND hi.status='ACTIVE' AND NOT EXISTS(SELECT 1 FROM "Block" b WHERE (b."blockerId"=c."lowId" AND b."blockedId"=c."highId") OR (b."blockerId"=c."highId" AND b."blockedId"=c."lowId"))`);return {unreadCount:Number(counts?.unread??0),requestCount:Number(counts?.requests??0)};
- }
- @Get('settings') settings(@Req()req:AuthRequest){return {policy:req.account.messagePolicy};}
- @Put('settings') async policy(@Body()dto:PolicyDto,@Req()req:AuthRequest){await this.db.user.update({where:{id:req.account.id},data:{messagePolicy:dto.policy}});return {policy:dto.policy};}
- @Get() async list(@Query()q:ChatQuery,@Req()req:AuthRequest){const viewer=req.account.id,c=q.cursor?decodeCursor(q.cursor):null;const rows=await this.db.chatConversation.findMany({where:{AND:[conversationWhere(viewer),{declinedAt:null},q.folder==='requests'?{acceptedAt:null,requesterId:{not:viewer}}:{OR:[{acceptedAt:{not:null}},{requesterId:viewer}]},...(c?[{OR:[{updatedAt:{lt:c.createdAt}},{updatedAt:c.createdAt,id:{lt:c.id}}]}]:[])]},include:{low:{select:publicUser},high:{select:publicUser},messages:{orderBy:[{createdAt:'desc'},{id:'desc'}],take:1,select:messageFields}},orderBy:[{updatedAt:'desc'},{id:'desc'}],take:q.limit+1});const page=rows.slice(0,q.limit),last=page.at(-1);const data=await Promise.all(page.map(async r=>{const at=r.lowId===viewer?r.lowReadAt:r.highReadAt,key=r.lowId===viewer?r.lowReadId:r.highReadId;return {id:r.id,other:r.lowId===viewer?r.high:r.low,requesterId:r.requesterId,pending:!r.acceptedAt,updatedAt:r.updatedAt,lastMessage:r.messages[0]??null,unreadCount:r.acceptedAt?await this.db.chatMessage.count({where:{conversationId:r.id,senderId:{not:viewer},OR:[{createdAt:{gt:at}},{createdAt:at,id:{gt:key}}]}}):0};}));return {data,nextCursor:rows.length>q.limit&&last?Buffer.from(JSON.stringify({id:last.id,at:last.updatedAt.toISOString()})).toString('base64url'):null};}
- @Post('start') @UseGuards(VerifiedGuard) @Throttle({default:{limit:10,ttl:60000}}) async start(@Body()dto:StartDto,@Req()req:AuthRequest){const viewer=req.account.id;const target=await this.db.user.findUnique({where:{username:dto.username}});if(!target||target.id===viewer)throw new BadRequestException('Choose another active account');try{return await safetyTransaction(this.db,async tx=>{await this.allowed(tx,viewer,target.id);const prior=await tx.chatMessage.findUnique({where:{senderId_requestId:{senderId:viewer,requestId:dto.requestId}}});if(prior){const previous=await tx.chatConversation.findUniqueOrThrow({where:{id:prior.conversationId}});if(![previous.lowId,previous.highId].includes(target.id)||previous.declinedAt)throw new BadRequestException('Use a new message request identifier');return {id:prior.conversationId};}const [lowId,highId]=[viewer,target.id].sort();let chat=await tx.chatConversation.findUnique({where:{lowId_highId:{lowId,highId}}});if(!chat){const recipientFollows=!!await tx.follow.findUnique({where:{followerId_followingId:{followerId:target.id,followingId:viewer}}});const current=await tx.user.findUniqueOrThrow({where:{id:target.id}});if(current.messagePolicy==='NOBODY'||current.messagePolicy==='FOLLOWING'&&!recipientFollows)throw new ForbiddenException('Messaging is unavailable for this account');chat=await tx.chatConversation.create({data:{lowId,highId,requesterId:viewer,acceptedAt:recipientFollows?new Date():null}});}else if(chat.declinedAt||!chat.acceptedAt)throw new ForbiddenException('Wait for this message request to be accepted');await tx.chatMessage.create({data:{conversationId:chat.id,senderId:viewer,requestId:dto.requestId,body:dto.body}});await tx.chatConversation.update({where:{id:chat.id},data:{updatedAt:new Date()}});return {id:chat.id};});}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2002'){const prior=await this.db.chatMessage.findUnique({where:{senderId_requestId:{senderId:viewer,requestId:dto.requestId}}});if(prior){const chat=await this.access(prior.conversationId,viewer);if([chat.lowId,chat.highId].includes(target.id))return {id:chat.id};}}throw e;}}
- @Get(':id') async get(@Param('id',ParseUUIDPipe)id:string,@Query()q:ChatQuery,@Req()req:AuthRequest){const chat=await this.access(id,req.account.id),cursor=q.cursor?decodeCursor(q.cursor):null;const rows=await this.db.chatMessage.findMany({where:{conversationId:id,...(cursor?{OR:[{createdAt:{lt:cursor.createdAt}},{createdAt:cursor.createdAt,id:{lt:cursor.id}}]}:{})},orderBy:[{createdAt:'desc'},{id:'desc'}],take:q.limit+1,select:messageFields});const page=rows.slice(0,q.limit),last=page.at(-1);return {id,other:chat.lowId===req.account.id?chat.high:chat.low,pending:!chat.acceptedAt,requesterId:chat.requesterId,data:page.reverse(),nextCursor:rows.length>q.limit&&last?Buffer.from(JSON.stringify({id:last.id,at:last.createdAt.toISOString()})).toString('base64url'):null};}
- @Post(':id/send') @UseGuards(VerifiedGuard) @Throttle({default:{limit:40,ttl:60000}}) async send(@Param('id',ParseUUIDPipe)id:string,@Body()dto:SendDto,@Req()req:AuthRequest){const viewer=req.account.id;try{return await safetyTransaction(this.db,async tx=>{const chat=await tx.chatConversation.findFirst({where:{AND:[conversationWhere(viewer),{id,declinedAt:null}]}});if(!chat)throw new NotFoundException('Conversation unavailable');const other=chat.lowId===viewer?chat.highId:chat.lowId;await this.allowed(tx,viewer,other);const prior=await tx.chatMessage.findUnique({where:{senderId_requestId:{senderId:viewer,requestId:dto.requestId}}});if(prior){if(prior.conversationId!==id)throw new BadRequestException('Use a new message identifier');return prior;}if(!chat.acceptedAt)throw new ForbiddenException('Accept the request before exchanging more messages');const message=await tx.chatMessage.create({data:{conversationId:id,senderId:viewer,requestId:dto.requestId,body:dto.body},select:messageFields});await tx.chatConversation.update({where:{id},data:{updatedAt:new Date()}});return message;});}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2002'){await this.access(id,viewer);const prior=await this.db.chatMessage.findUnique({where:{senderId_requestId:{senderId:viewer,requestId:dto.requestId}}});if(prior?.conversationId===id)return prior;}throw e;}}
- @Put(':id/request/:action') async request(@Param('id',ParseUUIDPipe)id:string,@Param('action')action:string,@Req()req:AuthRequest){if(!['accept','decline'].includes(action))throw new BadRequestException();return safetyTransaction(this.db,async tx=>{const chat=await tx.chatConversation.findFirst({where:{AND:[conversationWhere(req.account.id),{id,acceptedAt:null,requesterId:{not:req.account.id}}]}});if(!chat)throw new NotFoundException('Request unavailable');await this.allowed(tx,req.account.id,chat.requesterId);await tx.chatConversation.update({where:{id},data:action==='accept'?{acceptedAt:new Date(),declinedAt:null}:{declinedAt:new Date()}});return {ok:true};});}
- @Put(':id/read') async read(@Param('id',ParseUUIDPipe)id:string,@Body()dto:ReadDto,@Req()req:AuthRequest){const chat=await this.access(id,req.account.id);const message=await this.db.chatMessage.findFirst({where:{id:dto.messageId,conversationId:id},select:{id:true,createdAt:true}});if(!message)throw new NotFoundException();const low=chat.lowId===req.account.id;if(low)await this.db.$executeRaw`UPDATE "ChatConversation" SET "lowReadAt"=${message.createdAt},"lowReadId"=${message.id}::uuid WHERE id=${id}::uuid AND ("lowReadAt","lowReadId")<(${message.createdAt}::timestamptz,${message.id}::uuid)`;else await this.db.$executeRaw`UPDATE "ChatConversation" SET "highReadAt"=${message.createdAt},"highReadId"=${message.id}::uuid WHERE id=${id}::uuid AND ("highReadAt","highReadId")<(${message.createdAt}::timestamptz,${message.id}::uuid)`;return {ok:true};}
- @Post('report/:messageId') @Throttle({default:{limit:10,ttl:60000}}) async report(@Param('messageId',ParseUUIDPipe)messageId:string,@Body()dto:ReportDto,@Req()req:AuthRequest){const message=await this.db.chatMessage.findFirst({where:{id:messageId,conversation:{OR:[{lowId:req.account.id},{highId:req.account.id}]}},select:{body:true,senderId:true}});if(!message||message.senderId===req.account.id)throw new NotFoundException();return this.db.chatReport.upsert({where:{reporterId_messageId:{reporterId:req.account.id,messageId}},create:{messageId,reporterId:req.account.id,reason:dto.reason,details:dto.details??'',snapshot:message.body},update:{},select:{id:true}});}
- private async access(id:string,viewer:string){const chat=await this.db.chatConversation.findFirst({where:{AND:[conversationWhere(viewer),{id,declinedAt:null}]},include:{low:{select:publicUser},high:{select:publicUser}}});if(!chat)throw new NotFoundException('Conversation unavailable');return chat;}
- private async allowed(tx:Prisma.TransactionClient,viewer:string,other:string){if(viewer===other||!await tx.user.findFirst({where:{AND:[visibleAuthor(viewer),{id:other}]}}))throw new ForbiddenException('Messaging unavailable');}
+class SendDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  body!: string;
+  @IsUUID() requestId!: string;
 }
-@Controller('admin/message-reports') @UseGuards(SessionGuard,PermissionGuard) @RequirePermission('moderation.manage')
+class StartDto extends SendDto {
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase().replace(/^@/, '') : value,
+  )
+  @Matches(/^[a-z0-9_]{3,30}$/)
+  username!: string;
+}
+class ReadDto {
+  @IsUUID() messageId!: string;
+}
+class PolicyDto {
+  @IsIn(['REQUESTS', 'FOLLOWING', 'NOBODY']) policy!: string;
+}
+class ChatQuery {
+  @IsOptional() @IsIn(['inbox', 'requests']) folder = 'inbox';
+  @IsOptional() @IsString() @MaxLength(300) cursor?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit = 20;
+}
+class ReviewDto {
+  @IsIn(['OPEN', 'RESOLVED']) status!: string;
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  note!: string;
+}
+const messageFields = {
+  id: true,
+  conversationId: true,
+  senderId: true,
+  body: true,
+  createdAt: true,
+} as const;
+function conversationWhere(viewer: string): Prisma.ChatConversationWhereInput {
+  return {
+    AND: [
+      { OR: [{ lowId: viewer }, { highId: viewer }] },
+      { low: visibleAuthor(viewer), high: visibleAuthor(viewer) },
+    ],
+  };
+}
+@Controller('messages')
+@UseGuards(SessionGuard)
+export class MessagesController {
+  constructor(private readonly db: Database) {}
+  @Get('count') async count(@Req() req: AuthRequest) {
+    const viewer = req.account.id;
+    const [counts] = await this.db.$queryRaw<{ unread: bigint; requests: bigint }[]>(
+      Prisma.sql`SELECT count(DISTINCT c.id) FILTER(WHERE c."acceptedAt" IS NOT NULL AND m."senderId"<>${viewer}::uuid AND (m."createdAt",m.id)>(CASE WHEN c."lowId"=${viewer}::uuid THEN c."lowReadAt" ELSE c."highReadAt" END, CASE WHEN c."lowId"=${viewer}::uuid THEN c."lowReadId" ELSE c."highReadId" END)) AS unread, count(DISTINCT c.id) FILTER(WHERE c."acceptedAt" IS NULL AND c."requesterId"<>${viewer}::uuid) AS requests FROM "ChatConversation" c JOIN "User" lo ON lo.id=c."lowId" JOIN "User" hi ON hi.id=c."highId" LEFT JOIN "ChatMessage" m ON m."conversationId"=c.id WHERE (c."lowId"=${viewer}::uuid OR c."highId"=${viewer}::uuid) AND c."declinedAt" IS NULL AND lo.status='ACTIVE' AND hi.status='ACTIVE' AND NOT EXISTS(SELECT 1 FROM "Block" b WHERE (b."blockerId"=c."lowId" AND b."blockedId"=c."highId") OR (b."blockerId"=c."highId" AND b."blockedId"=c."lowId"))`,
+    );
+    return {
+      unreadCount: Number(counts?.unread ?? 0),
+      requestCount: Number(counts?.requests ?? 0),
+    };
+  }
+  @Get('settings') settings(@Req() req: AuthRequest) {
+    return { policy: req.account.messagePolicy };
+  }
+  @Put('settings') async policy(@Body() dto: PolicyDto, @Req() req: AuthRequest) {
+    await this.db.user.update({
+      where: { id: req.account.id },
+      data: { messagePolicy: dto.policy },
+    });
+    return { policy: dto.policy };
+  }
+  @Get() async list(@Query() q: ChatQuery, @Req() req: AuthRequest) {
+    const viewer = req.account.id,
+      c = q.cursor ? decodeCursor(q.cursor) : null;
+    const rows = await this.db.chatConversation.findMany({
+      where: {
+        AND: [
+          conversationWhere(viewer),
+          { declinedAt: null },
+          q.folder === 'requests'
+            ? { acceptedAt: null, requesterId: { not: viewer } }
+            : { OR: [{ acceptedAt: { not: null } }, { requesterId: viewer }] },
+          ...(c
+            ? [
+                {
+                  OR: [
+                    { updatedAt: { lt: c.createdAt } },
+                    { updatedAt: c.createdAt, id: { lt: c.id } },
+                  ],
+                },
+              ]
+            : []),
+        ],
+      },
+      include: {
+        low: { select: publicUser },
+        high: { select: publicUser },
+        messages: {
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: messageFields,
+        },
+      },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: q.limit + 1,
+    });
+    const page = rows.slice(0, q.limit),
+      last = page.at(-1);
+    const data = await Promise.all(
+      page.map(async (r) => {
+        const at = r.lowId === viewer ? r.lowReadAt : r.highReadAt,
+          key = r.lowId === viewer ? r.lowReadId : r.highReadId;
+        return {
+          id: r.id,
+          other: r.lowId === viewer ? r.high : r.low,
+          requesterId: r.requesterId,
+          pending: !r.acceptedAt,
+          updatedAt: r.updatedAt,
+          lastMessage: r.messages[0] ?? null,
+          unreadCount: r.acceptedAt
+            ? await this.db.chatMessage.count({
+                where: {
+                  conversationId: r.id,
+                  senderId: { not: viewer },
+                  OR: [{ createdAt: { gt: at } }, { createdAt: at, id: { gt: key } }],
+                },
+              })
+            : 0,
+        };
+      }),
+    );
+    return {
+      data,
+      nextCursor:
+        rows.length > q.limit && last
+          ? Buffer.from(JSON.stringify({ id: last.id, at: last.updatedAt.toISOString() })).toString(
+              'base64url',
+            )
+          : null,
+    };
+  }
+  @Post('start')
+  @UseGuards(VerifiedGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async start(@Body() dto: StartDto, @Req() req: AuthRequest) {
+    const viewer = req.account.id;
+    const target = await this.db.user.findUnique({ where: { username: dto.username } });
+    if (!target || target.id === viewer)
+      throw new BadRequestException('Choose another active account');
+    try {
+      return await safetyTransaction(this.db, async (tx) => {
+        await this.allowed(tx, viewer, target.id);
+        const prior = await tx.chatMessage.findUnique({
+          where: { senderId_requestId: { senderId: viewer, requestId: dto.requestId } },
+        });
+        if (prior) {
+          const previous = await tx.chatConversation.findUniqueOrThrow({
+            where: { id: prior.conversationId },
+          });
+          if (![previous.lowId, previous.highId].includes(target.id) || previous.declinedAt)
+            throw new BadRequestException('Use a new message request identifier');
+          return { id: prior.conversationId };
+        }
+        const [lowId, highId] = [viewer, target.id].sort();
+        let chat = await tx.chatConversation.findUnique({
+          where: { lowId_highId: { lowId, highId } },
+        });
+        if (!chat) {
+          const recipientFollows = !!(await tx.follow.findUnique({
+            where: { followerId_followingId: { followerId: target.id, followingId: viewer } },
+          }));
+          const current = await tx.user.findUniqueOrThrow({ where: { id: target.id } });
+          if (
+            current.messagePolicy === 'NOBODY' ||
+            (current.messagePolicy === 'FOLLOWING' && !recipientFollows)
+          )
+            throw new ForbiddenException('Messaging is unavailable for this account');
+          chat = await tx.chatConversation.create({
+            data: {
+              lowId,
+              highId,
+              requesterId: viewer,
+              acceptedAt: recipientFollows ? new Date() : null,
+            },
+          });
+        } else if (chat.declinedAt || !chat.acceptedAt)
+          throw new ForbiddenException('Wait for this message request to be accepted');
+        await tx.chatMessage.create({
+          data: {
+            conversationId: chat.id,
+            senderId: viewer,
+            requestId: dto.requestId,
+            body: dto.body,
+          },
+        });
+        await tx.chatConversation.update({
+          where: { id: chat.id },
+          data: { updatedAt: new Date() },
+        });
+        return { id: chat.id };
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const prior = await this.db.chatMessage.findUnique({
+          where: { senderId_requestId: { senderId: viewer, requestId: dto.requestId } },
+        });
+        if (prior) {
+          const chat = await this.access(prior.conversationId, viewer);
+          if ([chat.lowId, chat.highId].includes(target.id)) return { id: chat.id };
+        }
+      }
+      throw e;
+    }
+  }
+  @Get(':id') async get(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: ChatQuery,
+    @Req() req: AuthRequest,
+  ) {
+    const chat = await this.access(id, req.account.id),
+      cursor = q.cursor ? decodeCursor(q.cursor) : null;
+    const rows = await this.db.chatMessage.findMany({
+      where: {
+        conversationId: id,
+        ...(cursor
+          ? {
+              OR: [
+                { createdAt: { lt: cursor.createdAt } },
+                { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: q.limit + 1,
+      select: messageFields,
+    });
+    const page = rows.slice(0, q.limit),
+      last = page.at(-1);
+    return {
+      id,
+      other: chat.lowId === req.account.id ? chat.high : chat.low,
+      pending: !chat.acceptedAt,
+      requesterId: chat.requesterId,
+      data: page.reverse(),
+      nextCursor:
+        rows.length > q.limit && last
+          ? Buffer.from(JSON.stringify({ id: last.id, at: last.createdAt.toISOString() })).toString(
+              'base64url',
+            )
+          : null,
+    };
+  }
+  @Post(':id/send')
+  @UseGuards(VerifiedGuard)
+  @Throttle({ default: { limit: 40, ttl: 60000 } })
+  async send(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendDto,
+    @Req() req: AuthRequest,
+  ) {
+    const viewer = req.account.id;
+    try {
+      return await safetyTransaction(this.db, async (tx) => {
+        const chat = await tx.chatConversation.findFirst({
+          where: { AND: [conversationWhere(viewer), { id, declinedAt: null }] },
+        });
+        if (!chat) throw new NotFoundException('Conversation unavailable');
+        const other = chat.lowId === viewer ? chat.highId : chat.lowId;
+        await this.allowed(tx, viewer, other);
+        const prior = await tx.chatMessage.findUnique({
+          where: { senderId_requestId: { senderId: viewer, requestId: dto.requestId } },
+        });
+        if (prior) {
+          if (prior.conversationId !== id)
+            throw new BadRequestException('Use a new message identifier');
+          return prior;
+        }
+        if (!chat.acceptedAt)
+          throw new ForbiddenException('Accept the request before exchanging more messages');
+        const message = await tx.chatMessage.create({
+          data: { conversationId: id, senderId: viewer, requestId: dto.requestId, body: dto.body },
+          select: messageFields,
+        });
+        await tx.chatConversation.update({ where: { id }, data: { updatedAt: new Date() } });
+        return message;
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        await this.access(id, viewer);
+        const prior = await this.db.chatMessage.findUnique({
+          where: { senderId_requestId: { senderId: viewer, requestId: dto.requestId } },
+        });
+        if (prior?.conversationId === id) return prior;
+      }
+      throw e;
+    }
+  }
+  @Put(':id/request/:action') async request(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('action') action: string,
+    @Req() req: AuthRequest,
+  ) {
+    if (!['accept', 'decline'].includes(action)) throw new BadRequestException();
+    return safetyTransaction(this.db, async (tx) => {
+      const chat = await tx.chatConversation.findFirst({
+        where: {
+          AND: [
+            conversationWhere(req.account.id),
+            { id, acceptedAt: null, requesterId: { not: req.account.id } },
+          ],
+        },
+      });
+      if (!chat) throw new NotFoundException('Request unavailable');
+      await this.allowed(tx, req.account.id, chat.requesterId);
+      await tx.chatConversation.update({
+        where: { id },
+        data:
+          action === 'accept'
+            ? { acceptedAt: new Date(), declinedAt: null }
+            : { declinedAt: new Date() },
+      });
+      return { ok: true };
+    });
+  }
+  @Put(':id/read') async read(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReadDto,
+    @Req() req: AuthRequest,
+  ) {
+    const chat = await this.access(id, req.account.id);
+    const message = await this.db.chatMessage.findFirst({
+      where: { id: dto.messageId, conversationId: id },
+      select: { id: true, createdAt: true },
+    });
+    if (!message) throw new NotFoundException();
+    const low = chat.lowId === req.account.id;
+    if (low)
+      await this.db
+        .$executeRaw`UPDATE "ChatConversation" SET "lowReadAt"=${message.createdAt},"lowReadId"=${message.id}::uuid WHERE id=${id}::uuid AND ("lowReadAt","lowReadId")<(${message.createdAt}::timestamptz,${message.id}::uuid)`;
+    else
+      await this.db
+        .$executeRaw`UPDATE "ChatConversation" SET "highReadAt"=${message.createdAt},"highReadId"=${message.id}::uuid WHERE id=${id}::uuid AND ("highReadAt","highReadId")<(${message.createdAt}::timestamptz,${message.id}::uuid)`;
+    return { ok: true };
+  }
+  @Post('report/:messageId') @Throttle({ default: { limit: 10, ttl: 60000 } }) async report(
+    @Param('messageId', ParseUUIDPipe) messageId: string,
+    @Body() dto: ReportDto,
+    @Req() req: AuthRequest,
+  ) {
+    const message = await this.db.chatMessage.findFirst({
+      where: {
+        id: messageId,
+        conversation: { OR: [{ lowId: req.account.id }, { highId: req.account.id }] },
+      },
+      select: { body: true, senderId: true },
+    });
+    if (!message || message.senderId === req.account.id) throw new NotFoundException();
+    return this.db.chatReport.upsert({
+      where: { reporterId_messageId: { reporterId: req.account.id, messageId } },
+      create: {
+        messageId,
+        reporterId: req.account.id,
+        reason: dto.reason,
+        details: dto.details ?? '',
+        snapshot: message.body,
+      },
+      update: {},
+      select: { id: true },
+    });
+  }
+  private async access(id: string, viewer: string) {
+    const chat = await this.db.chatConversation.findFirst({
+      where: { AND: [conversationWhere(viewer), { id, declinedAt: null }] },
+      include: { low: { select: publicUser }, high: { select: publicUser } },
+    });
+    if (!chat) throw new NotFoundException('Conversation unavailable');
+    return chat;
+  }
+  private async allowed(tx: Prisma.TransactionClient, viewer: string, other: string) {
+    if (
+      viewer === other ||
+      !(await tx.user.findFirst({ where: { AND: [visibleAuthor(viewer), { id: other }] } }))
+    )
+      throw new ForbiddenException('Messaging unavailable');
+  }
+}
+@Controller('admin/message-reports')
+@UseGuards(SessionGuard, PermissionGuard)
+@RequirePermission('moderation.manage')
 export class MessageReportsController {
- constructor(private readonly db:Database){}
- @Get() list(){return this.db.chatReport.findMany({where:{status:'OPEN'},orderBy:[{createdAt:'desc'},{id:'desc'}],take:100,select:{id:true,messageId:true,reason:true,details:true,snapshot:true,status:true,createdAt:true,reporter:{select:publicUser},message:{select:{sender:{select:publicUser}}}}});}
- @Put(':id') async review(@Param('id',ParseUUIDPipe)id:string,@Body()dto:ReviewDto,@Req()req:AuthRequest){return this.db.$transaction(async tx=>{const report=await tx.chatReport.update({where:{id},data:{status:dto.status,reviewNote:dto.note,reviewerId:req.account.id},select:{id:true,status:true}});await tx.auditLog.create({data:{actorId:req.account.id,action:'messages.report.review',targetId:id,reason:dto.note}});return report;});}
+  constructor(private readonly db: Database) {}
+  @Get() list() {
+    return this.db.chatReport.findMany({
+      where: { status: 'OPEN' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 100,
+      select: {
+        id: true,
+        messageId: true,
+        reason: true,
+        details: true,
+        snapshot: true,
+        status: true,
+        createdAt: true,
+        reporter: { select: publicUser },
+        message: { select: { sender: { select: publicUser } } },
+      },
+    });
+  }
+  @Put(':id') async review(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.db.$transaction(async (tx) => {
+      const report = await tx.chatReport.update({
+        where: { id },
+        data: { status: dto.status, reviewNote: dto.note, reviewerId: req.account.id },
+        select: { id: true, status: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: req.account.id,
+          action: 'messages.report.review',
+          targetId: id,
+          reason: dto.note,
+        },
+      });
+      return report;
+    });
+  }
 }

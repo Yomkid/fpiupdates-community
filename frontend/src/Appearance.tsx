@@ -1,8 +1,88 @@
 import { useEffect, useState } from 'react';
 import { Monitor, Moon, Sun } from 'lucide-react';
-export type Appearance='light'|'dark'|'system';
-const key='fpiupdates.appearance';
-function read():Appearance{try{const v=localStorage.getItem(key);return v==='light'||v==='dark'?v:'system';}catch{return 'system';}}
-export function applyAppearance(){const preference=read();document.documentElement.dataset.theme=preference==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):preference;document.querySelector('meta[name="theme-color"]')?.setAttribute('content',document.documentElement.dataset.theme==='dark'?'#000000':'#ffffff');}
-export function AppearanceSync(){useEffect(()=>{applyAppearance();const media=window.matchMedia('(prefers-color-scheme: dark)');media.addEventListener('change',applyAppearance);window.addEventListener('storage',applyAppearance);window.addEventListener('appearance-updated',applyAppearance);return()=>{media.removeEventListener('change',applyAppearance);window.removeEventListener('storage',applyAppearance);window.removeEventListener('appearance-updated',applyAppearance);};},[]);return null;}
-export function AppearanceControls(){const [value,setValue]=useState<Appearance>(read);useEffect(()=>{const sync=()=>setValue(read());window.addEventListener('appearance-updated',sync);window.addEventListener('storage',sync);return()=>{window.removeEventListener('appearance-updated',sync);window.removeEventListener('storage',sync);};},[]);return <fieldset className="appearance-controls"><legend>Appearance</legend><div>{(['light','dark','system'] as Appearance[]).map(mode=>{const Icon=mode==='light'?Sun:mode==='dark'?Moon:Monitor;return <button key={mode} type="button" aria-pressed={value===mode} onClick={()=>{try{localStorage.setItem(key,mode);}catch{}setValue(mode);document.documentElement.dataset.theme=mode==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):mode;applyAppearance();window.dispatchEvent(new Event('appearance-updated'));}}><Icon size={18}/>{mode[0].toUpperCase()+mode.slice(1)}</button>;})}</div></fieldset>;}
+export type Appearance = 'light' | 'dark' | 'system';
+const key = 'fpiupdates.appearance';
+function read(): Appearance {
+  try {
+    const v = localStorage.getItem(key);
+    return v === 'light' || v === 'dark' ? v : 'system';
+  } catch {
+    return 'system';
+  }
+}
+export function applyAppearance() {
+  const preference = read();
+  document.documentElement.dataset.theme =
+    preference === 'system'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+      : preference;
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute(
+      'content',
+      document.documentElement.dataset.theme === 'dark' ? '#000000' : '#ffffff',
+    );
+}
+export function AppearanceSync() {
+  useEffect(() => {
+    applyAppearance();
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    media.addEventListener('change', applyAppearance);
+    window.addEventListener('storage', applyAppearance);
+    window.addEventListener('appearance-updated', applyAppearance);
+    return () => {
+      media.removeEventListener('change', applyAppearance);
+      window.removeEventListener('storage', applyAppearance);
+      window.removeEventListener('appearance-updated', applyAppearance);
+    };
+  }, []);
+  return null;
+}
+export function AppearanceControls() {
+  const [value, setValue] = useState<Appearance>(read);
+  useEffect(() => {
+    const sync = () => setValue(read());
+    window.addEventListener('appearance-updated', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('appearance-updated', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+  return (
+    <fieldset className="appearance-controls">
+      <legend>Appearance</legend>
+      <div>
+        {(['light', 'dark', 'system'] as Appearance[]).map((mode) => {
+          const Icon = mode === 'light' ? Sun : mode === 'dark' ? Moon : Monitor;
+          return (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={value === mode}
+              onClick={() => {
+                try {
+                  localStorage.setItem(key, mode);
+                } catch {}
+                setValue(mode);
+                document.documentElement.dataset.theme =
+                  mode === 'system'
+                    ? matchMedia('(prefers-color-scheme: dark)').matches
+                      ? 'dark'
+                      : 'light'
+                    : mode;
+                applyAppearance();
+                window.dispatchEvent(new Event('appearance-updated'));
+              }}
+            >
+              <Icon size={18} />
+              {mode[0].toUpperCase() + mode.slice(1)}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}

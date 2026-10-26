@@ -1,15 +1,195 @@
-import {useFeatures} from './Features';
-import {useToastNotice} from './toast';
-import {useEffect,useRef,useState,type RefObject} from 'react';
-import {ImagePlus,Move,Trash2} from 'lucide-react';
-import {api,errorMessage,mediaUrl} from './api';
-import {CropImage} from './ImageTools';
-export function ImageUpload({kind,name,initialId,initialAlt,altName,onChange,onBusyChange,compact=false,inputRef,label:customLabel}:{label?:string;compact?:boolean;inputRef?:RefObject<HTMLInputElement|null>;kind:'avatar'|'post'|'cover'|'profile'|'sport';name:string;initialId?:string|null;initialAlt?:string|null;altName?:string;onChange?:(id:string|null)=>void;onBusyChange?:(busy:boolean)=>void}){
- const {uploadsAvailable,ready}=useFeatures();const fallbackRef=useRef<HTMLInputElement>(null);const fileRef=inputRef??fallbackRef;const [id,setId]=useState(initialId??null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [source,setSource]=useState<string|null>(null);useToastNotice(error,'error');const label=customLabel??(kind==='avatar'?'Profile picture':kind==='profile'?'Profile cover':kind==='cover'?'Cover image':kind==='sport'?'Sports image':'Post image');
- useEffect(()=>()=>{if(source?.startsWith('blob:'))URL.revokeObjectURL(source);},[source]);
- function changed(value:string|null){setId(value);onChange?.(value);}
- async function upload(file:File){setError('');setBusy(true);onBusyChange?.(true);try{const data=new FormData();data.append('file',file);const result=await api<{id:string}>(`/media/${kind}`,{method:'POST',body:data,signal:AbortSignal.timeout(60000)});changed(result.id);}catch(e){setError(errorMessage(e));throw e;}finally{setBusy(false);onBusyChange?.(false);}}
- function choose(file:File){setError('');if(file.size>5*1024*1024){setError('Choose an image smaller than 5 MB.');return;}if(!['image/jpeg','image/png','image/webp'].includes(file.type)){setError('Choose a JPEG, PNG or WebP image.');return;}if(['avatar','profile','sport'].includes(kind)){setSource(URL.createObjectURL(file));onBusyChange?.(true);}else void upload(file).catch(()=>{});}
- if(ready&&!uploadsAvailable)return <div className="image-upload-paused">{!compact&&<p className="form-note">Image uploads are paused on this test server.</p>}<input type="hidden" name={name} value={id??''}/></div>;
- return <div className={`image-upload image-upload-${kind} ${compact?'image-upload-compact':''}`}><input ref={fileRef} className="sr-only" type="file" aria-label={label} accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)choose(file);}}/>{!compact&&<div className="image-upload-heading"><strong>{label}</strong><button className="button secondary small" type="button" disabled={busy} onClick={()=>fileRef.current?.click()}><ImagePlus size={17}/>{id?'Change image':'Choose image'}</button></div>}<input type="hidden" name={name} value={id??''}/>{busy&&<p role="status">Uploading image…</p>}{id&&<><img className="upload-preview" src={mediaUrl(id)} alt={`${label} preview`}/><div className="image-upload-actions">{['avatar','profile','sport'].includes(kind)&&<button type="button" className="text-button" disabled={busy} onClick={()=>{setSource(mediaUrl(id));onBusyChange?.(true);}}><Move size={16}/>Reposition</button>}<button className="text-button" type="button" disabled={busy} onClick={()=>changed(null)}><Trash2 size={16}/>Remove {label.toLowerCase()}</button></div>{altName&&<label>Image description<input name={altName} defaultValue={initialAlt??''} maxLength={500} placeholder="Describe the image for people using screen readers"/></label>}</>}{!compact&&<p className="form-note">JPEG, PNG or WebP · up to 5 MB · 16 megapixels maximum.</p>}{source&&<CropImage src={source} aspect={kind==='profile'?3:1} label={label} onCancel={()=>{setSource(null);onBusyChange?.(false);}} onDone={async file=>{await upload(file);setSource(null);onBusyChange?.(false);}}/>}</div>;
+import { useFeatures } from './Features';
+import { useToastNotice } from './toast';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { ImagePlus, Move, Trash2 } from 'lucide-react';
+import { api, errorMessage, mediaUrl } from './api';
+import { CropImage } from './ImageTools';
+export function ImageUpload({
+  kind,
+  name,
+  initialId,
+  initialAlt,
+  altName,
+  onChange,
+  onBusyChange,
+  compact = false,
+  inputRef,
+  label: customLabel,
+}: {
+  label?: string;
+  compact?: boolean;
+  inputRef?: RefObject<HTMLInputElement | null>;
+  kind: 'avatar' | 'post' | 'cover' | 'profile' | 'sport';
+  name: string;
+  initialId?: string | null;
+  initialAlt?: string | null;
+  altName?: string;
+  onChange?: (id: string | null) => void;
+  onBusyChange?: (busy: boolean) => void;
+}) {
+  const { uploadsAvailable, ready } = useFeatures();
+  const fallbackRef = useRef<HTMLInputElement>(null);
+  const fileRef = inputRef ?? fallbackRef;
+  const [id, setId] = useState(initialId ?? null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [source, setSource] = useState<string | null>(null);
+  useToastNotice(error, 'error');
+  const label =
+    customLabel ??
+    (kind === 'avatar'
+      ? 'Profile picture'
+      : kind === 'profile'
+        ? 'Profile cover'
+        : kind === 'cover'
+          ? 'Cover image'
+          : kind === 'sport'
+            ? 'Sports image'
+            : 'Post image');
+  useEffect(
+    () => () => {
+      if (source?.startsWith('blob:')) URL.revokeObjectURL(source);
+    },
+    [source],
+  );
+  function changed(value: string | null) {
+    setId(value);
+    onChange?.(value);
+  }
+  async function upload(file: File) {
+    setError('');
+    setBusy(true);
+    onBusyChange?.(true);
+    try {
+      const data = new FormData();
+      data.append('file', file);
+      const result = await api<{ id: string }>(`/media/${kind}`, {
+        method: 'POST',
+        body: data,
+        signal: AbortSignal.timeout(60000),
+      });
+      changed(result.id);
+    } catch (e) {
+      setError(errorMessage(e));
+      throw e;
+    } finally {
+      setBusy(false);
+      onBusyChange?.(false);
+    }
+  }
+  function choose(file: File) {
+    setError('');
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Choose an image smaller than 5 MB.');
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Choose a JPEG, PNG or WebP image.');
+      return;
+    }
+    if (['avatar', 'profile', 'sport'].includes(kind)) {
+      setSource(URL.createObjectURL(file));
+      onBusyChange?.(true);
+    } else void upload(file).catch(() => {});
+  }
+  if (ready && !uploadsAvailable)
+    return (
+      <div className="image-upload-paused">
+        {!compact && <p className="form-note">Image uploads are paused on this test server.</p>}
+        <input type="hidden" name={name} value={id ?? ''} />
+      </div>
+    );
+  return (
+    <div className={`image-upload image-upload-${kind} ${compact ? 'image-upload-compact' : ''}`}>
+      <input
+        ref={fileRef}
+        className="sr-only"
+        type="file"
+        aria-label={label}
+        accept="image/jpeg,image/png,image/webp"
+        disabled={busy}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) choose(file);
+        }}
+      />
+      {!compact && (
+        <div className="image-upload-heading">
+          <strong>{label}</strong>
+          <button
+            className="button secondary small"
+            type="button"
+            disabled={busy}
+            onClick={() => fileRef.current?.click()}
+          >
+            <ImagePlus size={17} />
+            {id ? 'Change image' : 'Choose image'}
+          </button>
+        </div>
+      )}
+      <input type="hidden" name={name} value={id ?? ''} />
+      {busy && <p role="status">Uploading image…</p>}
+      {id && (
+        <>
+          <img className="upload-preview" src={mediaUrl(id)} alt={`${label} preview`} />
+          <div className="image-upload-actions">
+            {['avatar', 'profile', 'sport'].includes(kind) && (
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={() => {
+                  setSource(mediaUrl(id));
+                  onBusyChange?.(true);
+                }}
+              >
+                <Move size={16} />
+                Reposition
+              </button>
+            )}
+            <button
+              className="text-button"
+              type="button"
+              disabled={busy}
+              onClick={() => changed(null)}
+            >
+              <Trash2 size={16} />
+              Remove {label.toLowerCase()}
+            </button>
+          </div>
+          {altName && (
+            <label>
+              Image description
+              <input
+                name={altName}
+                defaultValue={initialAlt ?? ''}
+                maxLength={500}
+                placeholder="Describe the image for people using screen readers"
+              />
+            </label>
+          )}
+        </>
+      )}
+      {!compact && (
+        <p className="form-note">JPEG, PNG or WebP · up to 5 MB · 16 megapixels maximum.</p>
+      )}
+      {source && (
+        <CropImage
+          src={source}
+          aspect={kind === 'profile' ? 3 : 1}
+          label={label}
+          onCancel={() => {
+            setSource(null);
+            onBusyChange?.(false);
+          }}
+          onDone={async (file) => {
+            await upload(file);
+            setSource(null);
+            onBusyChange?.(false);
+          }}
+        />
+      )}
+    </div>
+  );
 }

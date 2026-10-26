@@ -6,5 +6,8 @@
     "start": "node scripts/start.mjs",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "test": "npm --prefix backend test"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
   }
 }

@@ -1,4 +1,71 @@
-import {EmojiButton} from './EmojiButton';
+import { EmojiButton } from './EmojiButton';
 import { useRef, useEffect } from 'react';
-export function CharacterCount({value}:{value:string}){const count=Array.from(value).length;const state=count>=280?'limit-reached':count>=260?'limit-near':'';return <span className={'character-counter '+state} aria-label={`${count} of 280 characters`}><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="10" className="counter-track"/><circle cx="13" cy="13" r="10" className="counter-progress" strokeDasharray={`${Math.min(count/280,1)*62.832} 62.832`} transform="rotate(-90 13 13)"/></svg><span aria-hidden="true">{count}/280</span></span>;}
-export function ExtraThreadPart({value,index,onChange,onRemove,disabled}:{value:string;index:number;onChange:(v:string)=>void;onRemove:()=>void;disabled:boolean}){const ref=useRef<HTMLTextAreaElement>(null);useEffect(()=>{if(ref.current){ref.current.style.height='auto';ref.current.style.height=Math.max(80,ref.current.scrollHeight)+'px';}},[value]);const chars=Array.from(value);return <div className="extra-thread-part"><span className="thread-part-number">{index}</span><div className="length-textarea"><div className="character-overlay" aria-hidden="true"><span>{chars.slice(0,280).join('')}</span><mark>{chars.slice(280).join('')}</mark>{'\n'}</div><textarea ref={ref} aria-label={`Thread post ${index}`} value={value} disabled={disabled} onChange={e=>onChange(e.target.value)} placeholder="Add another post"/></div><div className="thread-part-tools"><EmojiButton inputRef={ref} value={value} onChange={onChange} disabled={disabled}/><CharacterCount value={value}/><button type="button" className="text-button" disabled={disabled} onClick={onRemove}>Remove post {index}</button></div></div>;}
+export function CharacterCount({ value }: { value: string }) {
+  const count = Array.from(value).length;
+  const state = count >= 280 ? 'limit-reached' : count >= 260 ? 'limit-near' : '';
+  return (
+    <span className={'character-counter ' + state} aria-label={`${count} of 280 characters`}>
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <circle cx="13" cy="13" r="10" className="counter-track" />
+        <circle
+          cx="13"
+          cy="13"
+          r="10"
+          className="counter-progress"
+          strokeDasharray={`${Math.min(count / 280, 1) * 62.832} 62.832`}
+          transform="rotate(-90 13 13)"
+        />
+      </svg>
+      <span aria-hidden="true">{count}/280</span>
+    </span>
+  );
+}
+export function ExtraThreadPart({
+  value,
+  index,
+  onChange,
+  onRemove,
+  disabled,
+}: {
+  value: string;
+  index: number;
+  onChange: (v: string) => void;
+  onRemove: () => void;
+  disabled: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.style.height = 'auto';
+      ref.current.style.height = Math.max(80, ref.current.scrollHeight) + 'px';
+    }
+  }, [value]);
+  const chars = Array.from(value);
+  return (
+    <div className="extra-thread-part">
+      <span className="thread-part-number">{index}</span>
+      <div className="length-textarea">
+        <div className="character-overlay" aria-hidden="true">
+          <span>{chars.slice(0, 280).join('')}</span>
+          <mark>{chars.slice(280).join('')}</mark>
+          {'\n'}
+        </div>
+        <textarea
+          ref={ref}
+          aria-label={`Thread post ${index}`}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Add another post"
+        />
+      </div>
+      <div className="thread-part-tools">
+        <EmojiButton inputRef={ref} value={value} onChange={onChange} disabled={disabled} />
+        <CharacterCount value={value} />
+        <button type="button" className="text-button" disabled={disabled} onClick={onRemove}>
+          Remove post {index}
+        </button>
+      </div>
+    </div>
+  );
+}

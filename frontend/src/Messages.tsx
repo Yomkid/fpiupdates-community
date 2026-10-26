@@ -1,27 +1,668 @@
-import {EmojiButton} from './EmojiButton';
-import {EmojiText} from './EmojiText';
-import {useEffect,useRef,useState,type FormEvent} from 'react';
-import {Link,useNavigate,useParams,useSearchParams} from 'react-router-dom';
-import {Mail,Plus,Flag,Send} from 'lucide-react';
-import {api,errorMessage,type User} from './api';
-import {Avatar,ErrorBox,Modal,LinkText} from './components';
-import {BackButton} from './Navigation';
-import {SafetyControls} from './Safety';
-import {useSession} from './session';
-import {useInteractions} from './interactions';
-import {useMessageCounts} from './message-state';
-import {toast} from './toast';
-type Message={id:string;body:string;senderId:string;createdAt:string};
-type Conversation={id:string;other:User;pending:boolean;requesterId:string;data:Message[];nextCursor:string|null};
-type Inbox={data:{id:string;other:User;pending:boolean;requesterId:string;updatedAt:string;lastMessage:Message|null;unreadCount:number}[];nextCursor:string|null};
-const changed=()=>window.dispatchEvent(new Event('messages-updated'));
-export function MessagesPage(){
- const {id}=useParams();const [params,setParams]=useSearchParams();const folder=params.get('folder')==='requests'?'requests':'inbox';const {user,loading}=useSession();const navigate=useNavigate();const ui=useInteractions();const counts=useMessageCounts();const [inbox,setInbox]=useState<Inbox|null>(null);const [chat,setChat]=useState<Conversation|null>(null);const [error,setError]=useState('');const [busy,setBusy]=useState(false);const [reload,setReload]=useState(0);const [compose,setCompose]=useState(!!params.get('to')||!!params.get('share'));const [to,setTo]=useState(params.get('to')??'');const [draft,setDraft]=useState((params.get('share')??'').slice(0,2000));const [body,setBody]=useState('');const messageInput=useRef<HTMLTextAreaElement>(null);const draftInput=useRef<HTMLTextAreaElement>(null);const requestId=useRef(crypto.randomUUID());const sendId=useRef(crypto.randomUUID());const [report,setReport]=useState<Message|null>(null);const [sending,setSending]=useState(false);const scroller=useRef<HTMLDivElement>(null);const atBottom=useRef(true);const seen=useRef('');
- useEffect(()=>{setBody('');setReport(null);sendId.current=crypto.randomUUID();},[id]);
- useEffect(()=>{if(params.get('to')){setTo(params.get('to')!);setCompose(true);}},[params.get('to')]);
- useEffect(()=>{const c=new AbortController();let active=true,running=false;setError('');setChat(null);setInbox(null);seen.current='';atBottom.current=true;if(!user)return()=>c.abort();async function load(){if(!active||running)return;running=true;try{if(id){const next=await api<Conversation>('/messages/'+id,{signal:AbortSignal.any([c.signal,AbortSignal.timeout(10000)])});if(!active)return;setChat(old=>old?{...next,data:[...old.data.filter(m=>!next.data.some(n=>n.id===m.id)),...next.data],nextCursor:old.nextCursor===null?null:old.nextCursor}:next);const last=next.data.at(-1);if(last&&seen.current!==last.id){seen.current=last.id;await api('/messages/'+id+'/read',{method:'PUT',body:JSON.stringify({messageId:last.id}),signal:AbortSignal.any([c.signal,AbortSignal.timeout(10000)])});changed();if(atBottom.current)requestAnimationFrame(()=>{if(scroller.current)scroller.current.scrollTop=scroller.current.scrollHeight;});}}else{const next=await api<Inbox>('/messages?folder='+folder,{signal:AbortSignal.any([c.signal,AbortSignal.timeout(10000)])});if(active)setInbox(old=>old&&next.nextCursor?{...next,data:[...next.data,...old.data.filter(row=>!next.data.some(n=>n.id===row.id))],nextCursor:old.nextCursor===null?null:old.nextCursor}:next);}}catch(e){if(active&&!c.signal.aborted){setError(errorMessage(e));if(id)setChat(null);}}finally{running=false;}}void load();const timer=setInterval(()=>{if(!document.hidden)void load();},id?5000:15000);return()=>{active=false;c.abort();clearInterval(timer);};},[id,folder,user?.id,reload]);
- async function more(){if(busy)return;setBusy(true);try{if(chat?.nextCursor&&id){const scroll=scroller.current,oldHeight=scroll?.scrollHeight??0,oldTop=scroll?.scrollTop??0;const next=await api<Conversation>('/messages/'+id+'?cursor='+encodeURIComponent(chat.nextCursor));setChat(old=>old?{...old,data:[...next.data.filter(n=>!old.data.some(m=>m.id===n.id)),...old.data],nextCursor:next.nextCursor}:next);requestAnimationFrame(()=>{if(scroll)scroll.scrollTop=scroll.scrollHeight-oldHeight+oldTop;});}else if(inbox?.nextCursor){const next=await api<Inbox>('/messages?'+new URLSearchParams({folder,cursor:inbox.nextCursor}));setInbox(old=>old?{...next,data:[...old.data,...next.data.filter(n=>!old.data.some(x=>x.id===n.id))]}:next);}}catch(e){setError(errorMessage(e));}finally{setBusy(false);}}
- async function send(e:FormEvent<HTMLFormElement>){e.preventDefault();if(sending||!body.trim()||Array.from(body).length>2000)return;setSending(true);try{await api('/messages/'+id+'/send',{method:'POST',body:JSON.stringify({body,requestId:sendId.current})});setBody('');sendId.current=crypto.randomUUID();atBottom.current=true;setReload(n=>n+1);changed();}catch(e){setError(errorMessage(e));}finally{setSending(false);}}
- return <><div className="page-heading"><BackButton/><div><h1>{chat?chat.other.displayName:'Messages'}</h1><p>{chat?'@'+chat.other.username:'Private conversations and message requests'}</p></div>{!id&&user&&<button className="icon-button" aria-label="New message" onClick={()=>setCompose(true)}><Plus size={22}/></button>}</div>{loading?<p className="page-panel">Checking your account…</p>:!user?<div className="page-panel"><button className="button primary" onClick={()=>ui.auth()}>Sign in to view messages</button></div>:<>{!id&&<><div className="feature-tabs"><button className={folder==='inbox'?'active':''} onClick={()=>setParams({})}>Inbox {counts.unreadCount?`(${counts.unreadCount})`:''}</button><button className={folder==='requests'?'active':''} onClick={()=>setParams({folder:'requests'})}>Requests {counts.requestCount?`(${counts.requestCount})`:''}</button><Link to="/settings#messages">Message privacy</Link>{user.permissions?.includes('moderation.manage')&&<Link to="/admin/message-reports">Reported messages</Link>}</div>{inbox?.data.map(row=><Link className={'chat-inbox-row '+(row.unreadCount?'is-unread':'')} to={'/messages/'+row.id} key={row.id}><Avatar user={row.other}/><div><strong>{row.other.displayName}</strong><span>@{row.other.username}</span><p>{row.pending?'Message request · ':''}<EmojiText text={row.lastMessage?.body??''}/></p></div>{row.unreadCount>0&&<span className="unread-badge">{row.unreadCount>99?'99+':row.unreadCount}</span>}</Link>)}{inbox&&!inbox.data.length&&<div className="empty-state"><Mail size={30}/><h2>{folder==='requests'?'No message requests':'Your conversations start here'}</h2><p>{folder==='requests'?'Requests from new people will appear here.':'Send a message from someone’s profile or start a conversation.'}</p></div>}{inbox?.nextCursor&&<div className="load-more"><button className="button secondary" disabled={busy} onClick={()=>void more()}>More conversations</button></div>}</>}{id&&chat&&<><div className="chat-person"><Link to={'/u/'+chat.other.username}><Avatar user={chat.other}/><span><strong>{chat.other.displayName}</strong><small>@{chat.other.username}</small></span></Link><SafetyControls account={chat.other} onChange={state=>{if(state.blocked){changed();navigate('/messages');}}}/></div>{chat.pending&&<div className="message-request"><strong>Message request</strong>{chat.requesterId===user.id?<p>You can send more messages once this request is accepted.</p>:<><p>Accept to exchange messages, or decline this request.</p><button className="button primary small" disabled={busy} onClick={async()=>{setBusy(true);try{await api('/messages/'+id+'/request/accept',{method:'PUT'});setReload(n=>n+1);changed();}catch(e){setError(errorMessage(e));}finally{setBusy(false);}}}>Accept request</button><button className="button secondary small" disabled={busy} onClick={async()=>{setBusy(true);try{await api('/messages/'+id+'/request/decline',{method:'PUT'});changed();navigate('/messages?folder=requests');}catch(e){setError(errorMessage(e));}finally{setBusy(false);}}}>Decline</button></>}</div>}<div className="chat-messages" ref={scroller} role="log" aria-label="Conversation messages" aria-live="polite" onScroll={e=>{atBottom.current=e.currentTarget.scrollHeight-e.currentTarget.scrollTop-e.currentTarget.clientHeight<80;}}>{chat.nextCursor&&<button className="text-button" disabled={busy} onClick={()=>void more()}>Older messages</button>}{chat.data.map(m=><article className={'chat-message '+(m.senderId===user.id?'sent':'received')} key={m.id}><p><LinkText text={m.body}/></p><div><time dateTime={m.createdAt}>{new Date(m.createdAt).toLocaleString('en-NG',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time>{m.senderId!==user.id&&<button className="icon-button" aria-label="Report message" title="Report message" onClick={()=>setReport(m)}><Flag size={13}/></button>}</div></article>)}</div>{!chat.pending&&<form className="message-composer" onSubmit={send}><label className="sr-only" htmlFor="chat-body">Your message</label><textarea ref={messageInput} id="chat-body" rows={2} value={body} onChange={e=>setBody(e.target.value)} placeholder="Write a message" disabled={sending}/><div><EmojiButton inputRef={messageInput} value={body} onChange={setBody} disabled={sending}/><small className={Array.from(body).length>2000?'danger-text':''}>{Array.from(body).length}/2000</small><button className="button primary small" disabled={sending||!body.trim()||Array.from(body).length>2000}><Send size={17}/>{sending?'Sending…':'Send'}</button></div></form>}<p className="chat-privacy-note">Messages are not end-to-end encrypted. Report scams or abuse using the flag on a message.</p></>}{!inbox&&!chat&&!error&&<p className="page-panel">Loading messages…</p>}{error&&<div className="page-panel"><ErrorBox message={error} retry={()=>setReload(n=>n+1)}/></div>}</>}{compose&&user&&<Modal title="New message" onClose={()=>{if(!sending){setCompose(false);if(params.has('to'))setParams({});}}}><form className="new-message-form" onSubmit={async e=>{e.preventDefault();if(sending||Array.from(draft).length>2000)return;setSending(true);try{const result=await api<{id:string}>('/messages/start',{method:'POST',body:JSON.stringify({username:to,body:draft,requestId:requestId.current})});setCompose(false);setDraft('');requestId.current=crypto.randomUUID();navigate('/messages/'+result.id);changed();}catch(e){setError(errorMessage(e));}finally{setSending(false);}}}><label>Username<input value={to} onChange={e=>setTo(e.target.value)} autoComplete="off" maxLength={31} required placeholder="@username"/></label><label>Message<textarea ref={draftInput} value={draft} onChange={e=>setDraft(e.target.value)} rows={5} required placeholder="Say hello"/></label><EmojiButton inputRef={draftInput} value={draft} onChange={setDraft} disabled={sending}/><p className="form-note">People who don’t follow you receive one message request first. You can exchange more messages after they accept.</p>{error&&<ErrorBox message={error}/>}<button className="button primary full" disabled={sending||!draft.trim()||Array.from(draft).length>2000}>{sending?'Sending…':'Send message'}</button></form></Modal>}{report&&<Modal title="Report message" onClose={()=>setReport(null)}><form className="new-message-form" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await api('/messages/report/'+report.id,{method:'POST',body:JSON.stringify({reason:f.get('reason'),details:f.get('details')})});setReport(null);toast('Message reported for review.','success');}catch(e){setError(errorMessage(e));}}}><p>The reported message and your explanation will be shared with authorised moderators.</p><label>Reason<select name="reason"><option value="SCAM">Scam or fraud</option><option value="HARASSMENT">Harassment</option><option value="THREAT">Threat</option><option value="IMPERSONATION">Impersonation</option><option value="OTHER">Other</option></select></label><label>Details<textarea name="details" rows={3} maxLength={2000}/></label><button className="button primary">Submit report</button></form></Modal>}</>;
+import { EmojiButton } from './EmojiButton';
+import { EmojiText } from './EmojiText';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Mail, Plus, Flag, Send } from 'lucide-react';
+import { api, errorMessage, type User } from './api';
+import { Avatar, ErrorBox, Modal, LinkText } from './components';
+import { BackButton } from './Navigation';
+import { SafetyControls } from './Safety';
+import { useSession } from './session';
+import { useInteractions } from './interactions';
+import { useMessageCounts } from './message-state';
+import { toast } from './toast';
+type Message = { id: string; body: string; senderId: string; createdAt: string };
+type Conversation = {
+  id: string;
+  other: User;
+  pending: boolean;
+  requesterId: string;
+  data: Message[];
+  nextCursor: string | null;
+};
+type Inbox = {
+  data: {
+    id: string;
+    other: User;
+    pending: boolean;
+    requesterId: string;
+    updatedAt: string;
+    lastMessage: Message | null;
+    unreadCount: number;
+  }[];
+  nextCursor: string | null;
+};
+const changed = () => window.dispatchEvent(new Event('messages-updated'));
+export function MessagesPage() {
+  const { id } = useParams();
+  const [params, setParams] = useSearchParams();
+  const folder = params.get('folder') === 'requests' ? 'requests' : 'inbox';
+  const { user, loading } = useSession();
+  const navigate = useNavigate();
+  const ui = useInteractions();
+  const counts = useMessageCounts();
+  const [inbox, setInbox] = useState<Inbox | null>(null);
+  const [chat, setChat] = useState<Conversation | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [compose, setCompose] = useState(!!params.get('to') || !!params.get('share'));
+  const [to, setTo] = useState(params.get('to') ?? '');
+  const [draft, setDraft] = useState((params.get('share') ?? '').slice(0, 2000));
+  const [body, setBody] = useState('');
+  const messageInput = useRef<HTMLTextAreaElement>(null);
+  const draftInput = useRef<HTMLTextAreaElement>(null);
+  const requestId = useRef(crypto.randomUUID());
+  const sendId = useRef(crypto.randomUUID());
+  const [report, setReport] = useState<Message | null>(null);
+  const [sending, setSending] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  const atBottom = useRef(true);
+  const seen = useRef('');
+  useEffect(() => {
+    setBody('');
+    setReport(null);
+    sendId.current = crypto.randomUUID();
+  }, [id]);
+  useEffect(() => {
+    if (params.get('to')) {
+      setTo(params.get('to')!);
+      setCompose(true);
+    }
+  }, [params.get('to')]);
+  useEffect(() => {
+    const c = new AbortController();
+    let active = true,
+      running = false;
+    setError('');
+    setChat(null);
+    setInbox(null);
+    seen.current = '';
+    atBottom.current = true;
+    if (!user) return () => c.abort();
+    async function load() {
+      if (!active || running) return;
+      running = true;
+      try {
+        if (id) {
+          const next = await api<Conversation>('/messages/' + id, {
+            signal: AbortSignal.any([c.signal, AbortSignal.timeout(10000)]),
+          });
+          if (!active) return;
+          setChat((old) =>
+            old
+              ? {
+                  ...next,
+                  data: [
+                    ...old.data.filter((m) => !next.data.some((n) => n.id === m.id)),
+                    ...next.data,
+                  ],
+                  nextCursor: old.nextCursor === null ? null : old.nextCursor,
+                }
+              : next,
+          );
+          const last = next.data.at(-1);
+          if (last && seen.current !== last.id) {
+            seen.current = last.id;
+            await api('/messages/' + id + '/read', {
+              method: 'PUT',
+              body: JSON.stringify({ messageId: last.id }),
+              signal: AbortSignal.any([c.signal, AbortSignal.timeout(10000)]),
+            });
+            changed();
+            if (atBottom.current)
+              requestAnimationFrame(() => {
+                if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
+              });
+          }
+        } else {
+          const next = await api<Inbox>('/messages?folder=' + folder, {
+            signal: AbortSignal.any([c.signal, AbortSignal.timeout(10000)]),
+          });
+          if (active)
+            setInbox((old) =>
+              old && next.nextCursor
+                ? {
+                    ...next,
+                    data: [
+                      ...next.data,
+                      ...old.data.filter((row) => !next.data.some((n) => n.id === row.id)),
+                    ],
+                    nextCursor: old.nextCursor === null ? null : old.nextCursor,
+                  }
+                : next,
+            );
+        }
+      } catch (e) {
+        if (active && !c.signal.aborted) {
+          setError(errorMessage(e));
+          if (id) setChat(null);
+        }
+      } finally {
+        running = false;
+      }
+    }
+    void load();
+    const timer = setInterval(
+      () => {
+        if (!document.hidden) void load();
+      },
+      id ? 5000 : 15000,
+    );
+    return () => {
+      active = false;
+      c.abort();
+      clearInterval(timer);
+    };
+  }, [id, folder, user?.id, reload]);
+  async function more() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (chat?.nextCursor && id) {
+        const scroll = scroller.current,
+          oldHeight = scroll?.scrollHeight ?? 0,
+          oldTop = scroll?.scrollTop ?? 0;
+        const next = await api<Conversation>(
+          '/messages/' + id + '?cursor=' + encodeURIComponent(chat.nextCursor),
+        );
+        setChat((old) =>
+          old
+            ? {
+                ...old,
+                data: [
+                  ...next.data.filter((n) => !old.data.some((m) => m.id === n.id)),
+                  ...old.data,
+                ],
+                nextCursor: next.nextCursor,
+              }
+            : next,
+        );
+        requestAnimationFrame(() => {
+          if (scroll) scroll.scrollTop = scroll.scrollHeight - oldHeight + oldTop;
+        });
+      } else if (inbox?.nextCursor) {
+        const next = await api<Inbox>(
+          '/messages?' + new URLSearchParams({ folder, cursor: inbox.nextCursor }),
+        );
+        setInbox((old) =>
+          old
+            ? {
+                ...next,
+                data: [
+                  ...old.data,
+                  ...next.data.filter((n) => !old.data.some((x) => x.id === n.id)),
+                ],
+              }
+            : next,
+        );
+      }
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function send(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (sending || !body.trim() || Array.from(body).length > 2000) return;
+    setSending(true);
+    try {
+      await api('/messages/' + id + '/send', {
+        method: 'POST',
+        body: JSON.stringify({ body, requestId: sendId.current }),
+      });
+      setBody('');
+      sendId.current = crypto.randomUUID();
+      atBottom.current = true;
+      setReload((n) => n + 1);
+      changed();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setSending(false);
+    }
+  }
+  return (
+    <>
+      <div className="page-heading">
+        <BackButton />
+        <div>
+          <h1>{chat ? chat.other.displayName : 'Messages'}</h1>
+          <p>{chat ? '@' + chat.other.username : 'Private conversations and message requests'}</p>
+        </div>
+        {!id && user && (
+          <button className="icon-button" aria-label="New message" onClick={() => setCompose(true)}>
+            <Plus size={22} />
+          </button>
+        )}
+      </div>
+      {loading ? (
+        <p className="page-panel">Checking your account…</p>
+      ) : !user ? (
+        <div className="page-panel">
+          <button className="button primary" onClick={() => ui.auth()}>
+            Sign in to view messages
+          </button>
+        </div>
+      ) : (
+        <>
+          {!id && (
+            <>
+              <div className="feature-tabs">
+                <button
+                  className={folder === 'inbox' ? 'active' : ''}
+                  onClick={() => setParams({})}
+                >
+                  Inbox {counts.unreadCount ? `(${counts.unreadCount})` : ''}
+                </button>
+                <button
+                  className={folder === 'requests' ? 'active' : ''}
+                  onClick={() => setParams({ folder: 'requests' })}
+                >
+                  Requests {counts.requestCount ? `(${counts.requestCount})` : ''}
+                </button>
+                <Link to="/settings#messages">Message privacy</Link>
+                {user.permissions?.includes('moderation.manage') && (
+                  <Link to="/admin/message-reports">Reported messages</Link>
+                )}
+              </div>
+              {inbox?.data.map((row) => (
+                <Link
+                  className={'chat-inbox-row ' + (row.unreadCount ? 'is-unread' : '')}
+                  to={'/messages/' + row.id}
+                  key={row.id}
+                >
+                  <Avatar user={row.other} />
+                  <div>
+                    <strong>{row.other.displayName}</strong>
+                    <span>@{row.other.username}</span>
+                    <p>
+                      {row.pending ? 'Message request · ' : ''}
+                      <EmojiText text={row.lastMessage?.body ?? ''} />
+                    </p>
+                  </div>
+                  {row.unreadCount > 0 && (
+                    <span className="unread-badge">
+                      {row.unreadCount > 99 ? '99+' : row.unreadCount}
+                    </span>
+                  )}
+                </Link>
+              ))}
+              {inbox && !inbox.data.length && (
+                <div className="empty-state">
+                  <Mail size={30} />
+                  <h2>
+                    {folder === 'requests'
+                      ? 'No message requests'
+                      : 'Your conversations start here'}
+                  </h2>
+                  <p>
+                    {folder === 'requests'
+                      ? 'Requests from new people will appear here.'
+                      : 'Send a message from someone’s profile or start a conversation.'}
+                  </p>
+                </div>
+              )}
+              {inbox?.nextCursor && (
+                <div className="load-more">
+                  <button className="button secondary" disabled={busy} onClick={() => void more()}>
+                    More conversations
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+          {id && chat && (
+            <>
+              <div className="chat-person">
+                <Link to={'/u/' + chat.other.username}>
+                  <Avatar user={chat.other} />
+                  <span>
+                    <strong>{chat.other.displayName}</strong>
+                    <small>@{chat.other.username}</small>
+                  </span>
+                </Link>
+                <SafetyControls
+                  account={chat.other}
+                  onChange={(state) => {
+                    if (state.blocked) {
+                      changed();
+                      navigate('/messages');
+                    }
+                  }}
+                />
+              </div>
+              {chat.pending && (
+                <div className="message-request">
+                  <strong>Message request</strong>
+                  {chat.requesterId === user.id ? (
+                    <p>You can send more messages once this request is accepted.</p>
+                  ) : (
+                    <>
+                      <p>Accept to exchange messages, or decline this request.</p>
+                      <button
+                        className="button primary small"
+                        disabled={busy}
+                        onClick={async () => {
+                          setBusy(true);
+                          try {
+                            await api('/messages/' + id + '/request/accept', { method: 'PUT' });
+                            setReload((n) => n + 1);
+                            changed();
+                          } catch (e) {
+                            setError(errorMessage(e));
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      >
+                        Accept request
+                      </button>
+                      <button
+                        className="button secondary small"
+                        disabled={busy}
+                        onClick={async () => {
+                          setBusy(true);
+                          try {
+                            await api('/messages/' + id + '/request/decline', { method: 'PUT' });
+                            changed();
+                            navigate('/messages?folder=requests');
+                          } catch (e) {
+                            setError(errorMessage(e));
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      >
+                        Decline
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              <div
+                className="chat-messages"
+                ref={scroller}
+                role="log"
+                aria-label="Conversation messages"
+                aria-live="polite"
+                onScroll={(e) => {
+                  atBottom.current =
+                    e.currentTarget.scrollHeight -
+                      e.currentTarget.scrollTop -
+                      e.currentTarget.clientHeight <
+                    80;
+                }}
+              >
+                {chat.nextCursor && (
+                  <button className="text-button" disabled={busy} onClick={() => void more()}>
+                    Older messages
+                  </button>
+                )}
+                {chat.data.map((m) => (
+                  <article
+                    className={'chat-message ' + (m.senderId === user.id ? 'sent' : 'received')}
+                    key={m.id}
+                  >
+                    <p>
+                      <LinkText text={m.body} />
+                    </p>
+                    <div>
+                      <time dateTime={m.createdAt}>
+                        {new Date(m.createdAt).toLocaleString('en-NG', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </time>
+                      {m.senderId !== user.id && (
+                        <button
+                          className="icon-button"
+                          aria-label="Report message"
+                          title="Report message"
+                          onClick={() => setReport(m)}
+                        >
+                          <Flag size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+              {!chat.pending && (
+                <form className="message-composer" onSubmit={send}>
+                  <label className="sr-only" htmlFor="chat-body">
+                    Your message
+                  </label>
+                  <textarea
+                    ref={messageInput}
+                    id="chat-body"
+                    rows={2}
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    placeholder="Write a message"
+                    disabled={sending}
+                  />
+                  <div>
+                    <EmojiButton
+                      inputRef={messageInput}
+                      value={body}
+                      onChange={setBody}
+                      disabled={sending}
+                    />
+                    <small className={Array.from(body).length > 2000 ? 'danger-text' : ''}>
+                      {Array.from(body).length}/2000
+                    </small>
+                    <button
+                      className="button primary small"
+                      disabled={sending || !body.trim() || Array.from(body).length > 2000}
+                    >
+                      <Send size={17} />
+                      {sending ? 'Sending…' : 'Send'}
+                    </button>
+                  </div>
+                </form>
+              )}
+              <p className="chat-privacy-note">
+                Messages are not end-to-end encrypted. Report scams or abuse using the flag on a
+                message.
+              </p>
+            </>
+          )}
+          {!inbox && !chat && !error && <p className="page-panel">Loading messages…</p>}
+          {error && (
+            <div className="page-panel">
+              <ErrorBox message={error} retry={() => setReload((n) => n + 1)} />
+            </div>
+          )}
+        </>
+      )}
+      {compose && user && (
+        <Modal
+          title="New message"
+          onClose={() => {
+            if (!sending) {
+              setCompose(false);
+              if (params.has('to')) setParams({});
+            }
+          }}
+        >
+          <form
+            className="new-message-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (sending || Array.from(draft).length > 2000) return;
+              setSending(true);
+              try {
+                const result = await api<{ id: string }>('/messages/start', {
+                  method: 'POST',
+                  body: JSON.stringify({ username: to, body: draft, requestId: requestId.current }),
+                });
+                setCompose(false);
+                setDraft('');
+                requestId.current = crypto.randomUUID();
+                navigate('/messages/' + result.id);
+                changed();
+              } catch (e) {
+                setError(errorMessage(e));
+              } finally {
+                setSending(false);
+              }
+            }}
+          >
+            <label>
+              Username
+              <input
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                autoComplete="off"
+                maxLength={31}
+                required
+                placeholder="@username"
+              />
+            </label>
+            <label>
+              Message
+              <textarea
+                ref={draftInput}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={5}
+                required
+                placeholder="Say hello"
+              />
+            </label>
+            <EmojiButton
+              inputRef={draftInput}
+              value={draft}
+              onChange={setDraft}
+              disabled={sending}
+            />
+            <p className="form-note">
+              People who don’t follow you receive one message request first. You can exchange more
+              messages after they accept.
+            </p>
+            {error && <ErrorBox message={error} />}
+            <button
+              className="button primary full"
+              disabled={sending || !draft.trim() || Array.from(draft).length > 2000}
+            >
+              {sending ? 'Sending…' : 'Send message'}
+            </button>
+          </form>
+        </Modal>
+      )}
+      {report && (
+        <Modal title="Report message" onClose={() => setReport(null)}>
+          <form
+            className="new-message-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget);
+              try {
+                await api('/messages/report/' + report.id, {
+                  method: 'POST',
+                  body: JSON.stringify({ reason: f.get('reason'), details: f.get('details') }),
+                });
+                setReport(null);
+                toast('Message reported for review.', 'success');
+              } catch (e) {
+                setError(errorMessage(e));
+              }
+            }}
+          >
+            <p>
+              The reported message and your explanation will be shared with authorised moderators.
+            </p>
+            <label>
+              Reason
+              <select name="reason">
+                <option value="SCAM">Scam or fraud</option>
+                <option value="HARASSMENT">Harassment</option>
+                <option value="THREAT">Threat</option>
+                <option value="IMPERSONATION">Impersonation</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </label>
+            <label>
+              Details
+              <textarea name="details" rows={3} maxLength={2000} />
+            </label>
+            <button className="button primary">Submit report</button>
+          </form>
+        </Modal>
+      )}
+    </>
+  );
 }
-export function MessageReportsPage(){const {user}=useSession();const [rows,setRows]=useState<{id:string;snapshot:string;reason:string;details:string;reporter:User;message:{sender:User}}[]>([]);const [error,setError]=useState('');const [reload,setReload]=useState(0);useEffect(()=>{if(user?.permissions?.includes('moderation.manage'))api<typeof rows>('/admin/message-reports').then(setRows).catch(e=>setError(errorMessage(e)));},[user?.id,reload]);return <><div className="page-heading"><BackButton/><div><h1>Reported messages</h1><p>Private evidence · authorised moderation only</p></div></div>{!user?.permissions?.includes('moderation.manage')?<p className="page-panel">Report-review permission required.</p>:rows.map(row=><form className="message-report-card" key={row.id} onSubmit={async e=>{e.preventDefault();const note=new FormData(e.currentTarget).get('note');try{await api('/admin/message-reports/'+row.id,{method:'PUT',body:JSON.stringify({status:'RESOLVED',note})});setReload(v=>v+1);toast('Message report resolved.','success');}catch(e){setError(errorMessage(e));}}}><strong>{row.reason} · @{row.message.sender.username}</strong><blockquote>{row.snapshot}</blockquote><p>Reported by @{row.reporter.username}</p><p>{row.details}</p><label>Review note<textarea name="note" required minLength={1} maxLength={2000}/></label><button className="button primary small">Resolve report</button></form>)}{error&&<ErrorBox message={error}/>}</>;}
+export function MessageReportsPage() {
+  const { user } = useSession();
+  const [rows, setRows] = useState<
+    {
+      id: string;
+      snapshot: string;
+      reason: string;
+      details: string;
+      reporter: User;
+      message: { sender: User };
+    }[]
+  >([]);
+  const [error, setError] = useState('');
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    if (user?.permissions?.includes('moderation.manage'))
+      api<typeof rows>('/admin/message-reports')
+        .then(setRows)
+        .catch((e) => setError(errorMessage(e)));
+  }, [user?.id, reload]);
+  return (
+    <>
+      <div className="page-heading">
+        <BackButton />
+        <div>
+          <h1>Reported messages</h1>
+          <p>Private evidence · authorised moderation only</p>
+        </div>
+      </div>
+      {!user?.permissions?.includes('moderation.manage') ? (
+        <p className="page-panel">Report-review permission required.</p>
+      ) : (
+        rows.map((row) => (
+          <form
+            className="message-report-card"
+            key={row.id}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const note = new FormData(e.currentTarget).get('note');
+              try {
+                await api('/admin/message-reports/' + row.id, {
+                  method: 'PUT',
+                  body: JSON.stringify({ status: 'RESOLVED', note }),
+                });
+                setReload((v) => v + 1);
+                toast('Message report resolved.', 'success');
+              } catch (e) {
+                setError(errorMessage(e));
+              }
+            }}
+          >
+            <strong>
+              {row.reason} · @{row.message.sender.username}
+            </strong>
+            <blockquote>{row.snapshot}</blockquote>
+            <p>Reported by @{row.reporter.username}</p>
+            <p>{row.details}</p>
+            <label>
+              Review note
+              <textarea name="note" required minLength={1} maxLength={2000} />
+            </label>
+            <button className="button primary small">Resolve report</button>
+          </form>
+        ))
+      )}
+      {error && <ErrorBox message={error} />}
+    </>
+  );
+}
