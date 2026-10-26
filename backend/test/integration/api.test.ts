@@ -5888,7 +5888,7 @@ test('optional registration details remain private where appropriate and onboard
   const isolatedApp = isolatedModule.createNestApplication({ logger: false });
   configureApp(isolatedApp, ['http://localhost:5173']);
 
-  let response: Awaited<ReturnType<request.Test['then']>>;
+  let response: request.Response;
 
   try {
     await isolatedApp.init();
