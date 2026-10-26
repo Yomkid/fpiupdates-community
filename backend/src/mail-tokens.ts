@@ -1,3 +1,4 @@
+import { emailTemplate, sendAccountEmail } from './mail-template';
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -38,7 +39,17 @@ export class RecoveryService {
         );
         console.log(`Development email saved in backend/.local-mail/${record.id}.txt`);
       } else {
-        await deliverEmail({ to: user.email, subject, text });
+        await deliverEmail({
+          to: user.email,
+          subject,
+          text,
+          html: emailTemplate(
+            subject,
+            `Hello ${user.displayName},\n\n${purpose === 'RESET' ? 'Use the button below to reset your password.' : 'Confirm your email to enter the FpiUpdates community.'}\n\nThis link expires ${expiresAt.toISOString()} and can be used once. If you did not request this, ignore this email.`,
+            link,
+            purpose === 'RESET' ? 'Reset password' : 'Verify email',
+          ),
+        });
       }
     } catch {
       await this.db.actionToken.deleteMany({ where: { id: record.id } });
@@ -84,6 +95,15 @@ export class RecoveryService {
         });
       }
     });
+    await sendAccountEmail(
+      this.db,
+      record.userId,
+      purpose === 'VERIFY' ? 'Welcome to FpiUpdates' : 'Your password was changed',
+      purpose === 'VERIFY'
+        ? 'Your email is confirmed. Join conversations, find your people and complete your profile whenever you are ready.'
+        : 'Your password was changed and existing sessions were signed out. If this was not you, reset your password immediately.',
+      purpose === 'VERIFY' ? '/home' : '/forgot-password',
+    );
     return {
       message:
         purpose === 'VERIFY'

@@ -4,6 +4,8 @@ import { api, errorMessage } from './api';
 import { toast } from './toast';
 export type Flags = {
   advertising: boolean;
+  identityBadgeColours: boolean;
+  organisationAvatars: boolean;
   postImages: boolean;
   sports: boolean;
   messages: boolean;
@@ -12,6 +14,8 @@ export type Flags = {
 const Context = createContext<{ flags: Flags; ready: boolean; uploadsAvailable: boolean }>({
   flags: {
     advertising: false,
+    identityBadgeColours: false,
+    organisationAvatars: false,
     postImages: false,
     sports: false,
     messages: false,
@@ -23,6 +27,8 @@ const Context = createContext<{ flags: Flags; ready: boolean; uploadsAvailable: 
 export function FeaturesProvider({ children }: { children: ReactNode }) {
   const [flags, setFlags] = useState<Flags>({
       advertising: false,
+      identityBadgeColours: false,
+      organisationAvatars: false,
       postImages: false,
       sports: false,
       messages: false,
@@ -37,7 +43,7 @@ export function FeaturesProvider({ children }: { children: ReactNode }) {
       api<Flags & { uploadsAvailable: boolean }>('/features', { signal: c.signal })
         .then((f) => {
           if (alive) {
-            setFlags(f);
+            setFlags((current) => ({ ...current, ...f }));
             setUploadsAvailable(f.uploadsAvailable);
             setReady(true);
           }
@@ -82,6 +88,14 @@ export function FeatureRoute({ children }: { children: ReactNode }) {
   );
 }
 const labels: Record<keyof Flags, [string, string]> = {
+  identityBadgeColours: [
+    'Category badge colours',
+    'Show green for verified individuals and creators, gold for verified businesses and institutions, and grey for verified government accounts. Identity still requires manual review; review any custom Help content before release.',
+  ],
+  organisationAvatars: [
+    'Organisation profile shapes',
+    'Use rounded-square profile pictures for verified businesses and institutions. Government and individual accounts remain circular.',
+  ],
   advertising: [
     'Advertising drafts (beta)',
     'Enable draft campaigns and staff review. Payments and delivery remain unavailable.',
@@ -132,8 +146,9 @@ export function FeatureSettings() {
     <section className="feature-settings">
       <h2>Feature releases</h2>
       <p>
-        Choose what members can use. Switches apply at the API as well as the interface and do not
-        delete content. Other open tabs refresh availability within 30 seconds or when focused.
+        Choose what members can use. API features are enforced by the backend; appearance options
+        change the interface. Switches do not delete content. Other open tabs refresh availability
+        within 30 seconds or when focused.
       </p>
       <button className="button secondary" disabled={busy || !ready} onClick={() => void save()}>
         Apply text-first launch preset

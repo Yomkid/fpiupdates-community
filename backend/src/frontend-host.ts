@@ -31,6 +31,10 @@ export function hostFrontend(app: INestApplication) {
           take: 1000,
           select: { slug: true },
         });
+        const documents = await db.siteDocument.findMany({
+          where: { publishedHtml: { not: null } },
+          select: { slug: true },
+        });
         const paths = [
           '/',
           '/about',
@@ -39,6 +43,9 @@ export function hostFrontend(app: INestApplication) {
           '/guidelines',
           '/articles',
           ...rows.map((a) => '/articles/' + a.slug),
+          ...documents.map((d) =>
+            d.slug.startsWith('help-') ? '/help/' + d.slug.slice(5) : '/' + d.slug,
+          ),
         ];
         res
           .type('application/xml')

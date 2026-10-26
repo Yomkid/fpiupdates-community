@@ -45,7 +45,16 @@ const fields = {
   createdAt: true,
   readAt: true,
   contextPost: { select: { parentId: true } },
-  actor: { select: { id: true, username: true, displayName: true, avatarMediaId: true } },
+  actor: {
+    select: {
+      id: true,
+      username: true,
+      displayName: true,
+      avatarMediaId: true,
+      identityStatus: true,
+      identityCategory: true,
+    },
+  },
   post: {
     select: {
       id: true,

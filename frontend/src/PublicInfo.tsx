@@ -13,6 +13,8 @@ const labels: Record<string, string> = {
   '/notifications': 'Notifications',
   '/notifications/posts': 'Account updates',
   '/settings': 'Settings',
+  '/settings/verification': 'Identity & username requests',
+  '/check-email': 'Confirm your email',
   '/messages': 'Messages',
   '/bookmarks': 'Bookmarks',
   '/communities': 'Communities',

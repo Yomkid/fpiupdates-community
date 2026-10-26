@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import { OAuth2Client } from 'google-auth-library';
-export type EmailMessage = { to: string; subject: string; text: string };
+export type EmailMessage = { to: string; subject: string; text: string; html?: string };
 // Keep mail-sending consent separate from members' Google sign-in consent.
 export async function deliverEmail(message: EmailMessage) {
   const transport = process.env.EMAIL_TRANSPORT ?? 'smtp';

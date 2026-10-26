@@ -1,3 +1,4 @@
+import { VerifiedBadge } from './Identity';
 import { FindContacts } from './Discoverability';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
@@ -59,7 +60,10 @@ export function PeopleSuggestions({ full = false, context }: { full?: boolean; c
           <Link className="suggested-identity" to={'/u/' + person.username}>
             <Avatar user={person} />
             <span>
-              <strong>{person.displayName}</strong>
+              <strong>
+                {person.displayName}
+                <VerifiedBadge user={person} />
+              </strong>
               <small>@{person.username}</small>
               {full && <p>{person.bio || person.reason}</p>}
             </span>

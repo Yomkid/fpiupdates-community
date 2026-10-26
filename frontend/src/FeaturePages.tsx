@@ -163,6 +163,11 @@ export function RecoveryPage({ mode }: { mode: 'forgot' | 'reset' | 'verify' }) 
             </button>
           )}
           {error && <ErrorBox message={error} />}
+          {mode === 'verify' && notice && (
+            <Link className="button primary" to="/home">
+              Continue to your feed
+            </Link>
+          )}
           <Link className="text-button" to="/login">
             Back to sign in <ArrowRight size={14} />
           </Link>
@@ -448,6 +453,13 @@ export function FollowButton({ profile, onChange }: { profile: User; onChange: (
         onClick={async () => {
           if (!session.user) {
             ui.auth();
+            return;
+          }
+          if (!session.user.emailVerified) {
+            navigate(
+              '/check-email?next=' +
+                encodeURIComponent(window.location.pathname + window.location.search),
+            );
             return;
           }
           setBusy(true);

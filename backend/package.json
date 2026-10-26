@@ -1,6 +1,6 @@
 {
   "name": "@fpiupdates/backend",
-  "version": "0.28.0",
+  "version": "0.29.2",
   "private": true,
   "engines": {
     "node": ">=22.12.0"
@@ -11,7 +11,7 @@
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
-    "test:integration": "tsc -p tsconfig.test.json && node --test .test-dist/test/integration/*.test.js",
+    "test:integration": "tsc -p tsconfig.test.json && node --test --test-concurrency=1 .test-dist/test/integration/*.test.js",
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:dev": "prisma migrate dev",

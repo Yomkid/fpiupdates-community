@@ -391,13 +391,11 @@ export class SportsService {
       select: { id: true, username: true, displayName: true },
     });
     return {
-      data: rows
-        .slice(0, 30)
-        .map(({ actorId, ...r }) => ({
-          ...r,
-          current: snapshot(r.current as unknown as Parameters<typeof snapshot>[0]),
-          reporter: actors.find((a) => a.id === actorId) ?? null,
-        })),
+      data: rows.slice(0, 30).map(({ actorId, ...r }) => ({
+        ...r,
+        current: snapshot(r.current as unknown as Parameters<typeof snapshot>[0]),
+        reporter: actors.find((a) => a.id === actorId) ?? null,
+      })),
       nextBefore: rows.length > 30 ? rows[29].revision : null,
     };
   }

@@ -18,6 +18,10 @@ import {
   MinLength,
 } from 'class-validator';
 export const PERMISSIONS = [
+  'usernames.manage',
+  'verification.manage',
+  'pages.edit',
+  'pages.publish',
   'features.manage',
   'sports.manage',
   'sports.report',
@@ -80,7 +84,7 @@ export class RoleDto {
   @Transform(clean) @IsString() @MinLength(1) @MaxLength(80) name!: string;
   @IsArray()
   @ArrayUnique()
-  @ArrayMaxSize(20)
+  @ArrayMaxSize(40)
   @IsIn(PERMISSIONS, { each: true })
   permissions!: string[];
 }

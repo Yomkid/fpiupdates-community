@@ -1,3 +1,4 @@
+import { VerifiedBadge } from './Identity';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, Users, Sparkles } from 'lucide-react';
@@ -116,7 +117,10 @@ export function OnboardingCard() {
                 <Link className="suggested-identity" to={'/u/' + person.username}>
                   <Avatar user={person} />
                   <span>
-                    <strong>{person.displayName}</strong>
+                    <strong>
+                      {person.displayName}
+                      <VerifiedBadge user={person} />
+                    </strong>
                     <small>@{person.username}</small>
                   </span>
                 </Link>

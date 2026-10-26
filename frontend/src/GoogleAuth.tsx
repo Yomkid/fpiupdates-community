@@ -1,6 +1,7 @@
+import { BrandMark } from './BrandMark';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { api, errorMessage, type Topic } from './api';
+import { api, errorMessage, type Topic, type User } from './api';
 import { useSession } from './session';
 import { ErrorBox } from './components';
 import { UsernameField } from './ProfileFields';
@@ -91,8 +92,12 @@ export function GoogleSetup() {
           agreed: true,
         }),
       });
-      await session.refresh();
-      navigate(safeNext(result.next), { replace: true });
+      const me = await api<User>('/auth/me');
+      session.setUser(me);
+      const next = safeNext(result.next);
+      navigate(me.emailVerified ? next : '/check-email?next=' + encodeURIComponent(next), {
+        replace: true,
+      });
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -103,7 +108,7 @@ export function GoogleSetup() {
     <main className="standalone-auth">
       <BackButton />
       <Link className="auth-wordmark" to="/">
-        FpiUpdates <span className="beta">BETA</span>
+        <BrandMark /> FpiUpdates <span className="beta">BETA</span>
       </Link>
       <div className="account-form">
         <h1>Make it yours.</h1>
@@ -122,10 +127,10 @@ export function GoogleSetup() {
               />
             </label>
             <UsernameField />
-            <InterestChoices topics={topics} selected={selected} onChange={setSelected} />
+            <p className="form-note">Choose interests later from your feed or Settings.</p>
             <label className="checkbox-label">
               <input type="checkbox" required />I agree to the{' '}
-              <Link to="/about" target="_blank">
+              <Link to="/guidelines" target="_blank">
                 community guidelines
               </Link>
               .

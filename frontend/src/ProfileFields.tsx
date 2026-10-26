@@ -18,7 +18,9 @@ export function UsernameField({ initial = '' }: { initial?: string }) {
       )
         .then((x) => {
           if (!controller.signal.aborted)
-            setState(x.available ? 'Username available' : 'Username is already taken');
+            setState(
+              x.available ? 'Username available' : 'This username is unavailable. Try another.',
+            );
         })
         .catch(() => {
           if (!controller.signal.aborted) setState('Availability will be checked when you save.');
@@ -44,7 +46,9 @@ export function UsernameField({ initial = '' }: { initial?: string }) {
           minLength={3}
           maxLength={30}
           value={value}
-          aria-invalid={state === 'Username is already taken' || state.startsWith('Use ')}
+          aria-invalid={
+            state === 'This username is unavailable. Try another.' || state.startsWith('Use ')
+          }
           onChange={(e) => setValue(e.target.value.toLowerCase())}
           placeholder="yourname"
         />
@@ -55,7 +59,7 @@ export function UsernameField({ initial = '' }: { initial?: string }) {
           'field-hint ' +
           (state === 'Username available'
             ? 'field-success'
-            : state === 'Username is already taken' || state.startsWith('Use ')
+            : state === 'This username is unavailable. Try another.' || state.startsWith('Use ')
               ? 'field-error'
               : '')
         }

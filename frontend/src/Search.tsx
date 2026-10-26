@@ -1,3 +1,4 @@
+import { VerifiedBadge } from './Identity';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigationType, useSearchParams } from 'react-router-dom';
 import { Search, X, Users, FileText, Hash, ArrowUpRight } from 'lucide-react';

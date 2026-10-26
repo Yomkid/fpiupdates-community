@@ -91,7 +91,14 @@ export class DiscoveryController {
       },
       orderBy: { username: 'asc' },
       take: 8,
-      select: { id: true, username: true, displayName: true, avatarMediaId: true },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        avatarMediaId: true,
+        identityStatus: true,
+        identityCategory: true,
+      },
     });
   }
   @Get('hashtags') @UseGuards(OptionalSessionGuard) async hashtags(

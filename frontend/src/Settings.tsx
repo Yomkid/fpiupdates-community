@@ -88,6 +88,9 @@ export function SettingsPage() {
   }
   return (
     <>
+      <p className="page-panel">
+        <Link to="/settings/verification">Verification, username claims & appeals →</Link>
+      </p>
       <PageHeading title="Settings" subtitle="Your profile, privacy and account preferences." />
       {!session.user ? (
         <p className="page-panel">

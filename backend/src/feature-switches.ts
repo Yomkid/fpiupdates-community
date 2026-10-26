@@ -22,7 +22,11 @@ export const featureKeys = [
   'messages',
   'articlePublishing',
   'advertising',
+  'identityBadgeColours',
+  'organisationAvatars',
 ] as const;
+const defaultEnabled = (key: FeatureKey) =>
+  !['advertising', 'identityBadgeColours', 'organisationAvatars'].includes(key);
 export type FeatureKey = (typeof featureKeys)[number];
 @Injectable()
 export class FeatureSwitches {
@@ -30,12 +34,12 @@ export class FeatureSwitches {
   async all() {
     const rows = await this.db.featureSwitch.findMany();
     return Object.fromEntries(
-      featureKeys.map((k) => [k, rows.find((r) => r.key === k)?.enabled ?? k !== 'advertising']),
+      featureKeys.map((k) => [k, rows.find((r) => r.key === k)?.enabled ?? defaultEnabled(k)]),
     ) as Record<FeatureKey, boolean>;
   }
   async enabled(key: FeatureKey) {
     return (
-      (await this.db.featureSwitch.findUnique({ where: { key } }))?.enabled ?? key !== 'advertising'
+      (await this.db.featureSwitch.findUnique({ where: { key } }))?.enabled ?? defaultEnabled(key)
     );
   }
 }

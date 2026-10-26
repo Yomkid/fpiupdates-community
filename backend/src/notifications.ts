@@ -51,7 +51,16 @@ const fields = {
   kind: true,
   createdAt: true,
   readAt: true,
-  actor: { select: { id: true, username: true, displayName: true, avatarMediaId: true } },
+  actor: {
+    select: {
+      id: true,
+      username: true,
+      displayName: true,
+      avatarMediaId: true,
+      identityStatus: true,
+      identityCategory: true,
+    },
+  },
   post: { select: { id: true, body: true, article: { select: { slug: true, title: true } } } },
 } as const;
 @Controller('notifications')
@@ -86,7 +95,14 @@ export class NotificationsController {
             select: {
               ...fields,
               actor: {
-                select: { id: true, displayName: true, username: true, avatarMediaId: true },
+                select: {
+                  id: true,
+                  displayName: true,
+                  username: true,
+                  avatarMediaId: true,
+                  identityStatus: true,
+                  identityCategory: true,
+                },
               },
             },
           })

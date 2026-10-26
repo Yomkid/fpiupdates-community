@@ -1,3 +1,11 @@
+# Current release: v0.29.2
+
+See [PATCH-v0.29.2.md](PATCH-v0.29.2.md) for release controls, organisation applications and badge appearance.
+
+See [PATCH-v0.29.1.md](PATCH-v0.29.1.md) for the public-access and layout fixes.
+
+Read [UPGRADE-v0.29.0.md](UPGRADE-v0.29.0.md) for this release, the local backup/upgrade script, GitHub workflow and hosted deployment sequence. See [VALIDATION-v0.29.0.md](VALIDATION-v0.29.0.md) for checks and limits. Earlier version notes below are retained for reference.
+
 # FpiUpdates v0.28.0
 
 An independent Ilaro community platform with NestJS/Prisma/PostgreSQL backend and a separate React/Vite frontend. Node >=22.12 is required; PostgreSQL 17 runs locally through Docker Compose. Use http://localhost:5173 (the configured browser origin). The API is http://localhost:3000/api/v1.
