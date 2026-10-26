@@ -1,3 +1,4 @@
+import { lockUsernames, assertUsername, protectOldUsername } from './usernames';
 import { Throttle } from '@nestjs/throttler';
 import { sessionTracker } from './notification-throttle';
 import {
@@ -224,28 +225,60 @@ export class ProfileController {
     await this.media.assertOwned(dto.profileCoverMediaId, req.account.id, 'PROFILE');
     const dateOfBirth = dto.dateOfBirth === undefined ? undefined : birthDate(dto.dateOfBirth);
     try {
-      return await this.db.user.update({
-        where: { id: req.account.id },
-        data: {
-          gender: dto.gender,
-          occupation: dto.occupation,
-          skills: dto.skills,
-          profileCoverMediaId: dto.profileCoverMediaId,
-          campusIdentity: dto.campusIdentity,
-          username: dto.username,
-          phoneNumber: dto.phoneNumber,
-          ...(dto.phoneNumber !== undefined && dto.phoneNumber !== req.account.phoneNumber
-            ? { phoneVerifiedAt: null, discoverByPhone: false }
-            : {}),
-          dateOfBirth,
-          location: dto.location,
-          avatarMediaId: dto.avatarMediaId,
-          displayName: dto.displayName,
-          bio: dto.bio,
-          website: dto.website ?? null,
-          department: dto.department ?? null,
-        },
-        select: publicUser,
+      return await this.db.$transaction(async (tx) => {
+        await lockUsernames(tx);
+        const current = await tx.user.findUniqueOrThrow({ where: { id: req.account.id } });
+        if (dto.username && dto.username !== current.username) {
+          await assertUsername(tx, dto.username, current.id);
+          await protectOldUsername(tx, current.id, current.username);
+        }
+        const needsReview =
+          current.identityStatus === 'VERIFIED' &&
+          ((dto.username !== undefined && dto.username !== current.username) ||
+            (dto.displayName !== undefined && dto.displayName !== current.displayName) ||
+            (dto.avatarMediaId !== undefined && dto.avatarMediaId !== current.avatarMediaId));
+        const updated = await tx.user.update({
+          where: { id: req.account.id },
+          data: {
+            ...(needsReview ? { identityStatus: 'REVIEW' } : {}),
+            gender: dto.gender,
+            occupation: dto.occupation,
+            skills: dto.skills,
+            profileCoverMediaId: dto.profileCoverMediaId,
+            campusIdentity: dto.campusIdentity,
+            username: dto.username,
+            phoneNumber: dto.phoneNumber,
+            ...(dto.phoneNumber !== undefined && dto.phoneNumber !== req.account.phoneNumber
+              ? { phoneVerifiedAt: null, discoverByPhone: false }
+              : {}),
+            dateOfBirth,
+            location: dto.location,
+            avatarMediaId: dto.avatarMediaId,
+            displayName: dto.displayName,
+            bio: dto.bio,
+            website: dto.website ?? null,
+            department: dto.department ?? null,
+          },
+          select: publicUser,
+        });
+        if (needsReview) {
+          await tx.accountNotice.create({
+            data: {
+              userId: current.id,
+              message:
+                'Your identity badge is under review because your name, username or profile picture changed. You can request another review in Settings.',
+            },
+          });
+          await tx.auditLog.create({
+            data: {
+              actorId: current.id,
+              action: 'identity.review',
+              targetId: current.id,
+              reason: 'Verified profile identity details changed',
+            },
+          });
+        }
+        return updated;
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')

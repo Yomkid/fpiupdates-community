@@ -1,3 +1,8 @@
+import { GoogleButton } from './GoogleAuth';
+import { isPublicRoute, canShowMobileComposer } from './access-policy';
+import { StartupScreen, VerifyEntry, ProfileCompletion } from './AccountEntry';
+import { IdentitySettings, AccountNotices } from './Identity';
+import { ManagedPage } from './ContentPages';
 import { AdsPage } from './Ads';
 import { PublicInfoPage, PageTitles } from './PublicInfo';
 import { InstallPromotion } from './PWA';
@@ -11,7 +16,7 @@ import { ActivityPage } from './Activity';
 import { SearchPage } from './Search';
 import { AppearanceSync } from './Appearance';
 import { MoreMenu } from './MoreMenu';
-import { BackButton, NavigationRestoration } from './Navigation';
+import { BackButton, NavigationRestoration, safeNext } from './Navigation';
 import { GuestBanner, StandaloneAuth, WelcomePage } from './AuthFlows';
 import { useInteractions } from './interactions';
 import { ConversationPage, RelevantPeople } from './Conversations';
@@ -42,6 +47,7 @@ import {
 } from 'react-router-dom';
 import {
   Bell,
+  Newspaper,
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
@@ -123,6 +129,7 @@ function Layout() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const location = useLocation();
+  const guest = !session.user;
   useEffect(() => {
     setError('');
   }, [location.pathname]);
@@ -145,7 +152,7 @@ function Layout() {
   }
   return (
     <div
-      className="site-layout"
+      className={'site-layout' + (guest ? ' guest-layout' : '')}
       onClickCapture={(e) => {
         const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[href]');
         if (
@@ -184,7 +191,7 @@ function Layout() {
       <header
         className={'mobile-header' + (location.pathname === '/home' ? ' mobile-home-header' : '')}
       >
-        {location.pathname === '/home' ? (
+        {location.pathname === '/home' && session.user ? (
           <>
             <Link
               to={session.user ? '/u/' + session.user.username : '/login'}
@@ -218,105 +225,115 @@ function Layout() {
       </header>
       <div className="app-shell">
         <aside className="left-sidebar">
-          <Brand />
-          <nav aria-label="Main navigation">
-            {availableMenus
-              .filter((menu) =>
-                [
-                  '/',
-                  '/home',
-                  '/search',
-                  '/notifications',
-                  '/me',
-                  '/communities',
-                  '/messages',
-                  '/people',
-                ].includes(menu.path),
-              )
-              .map((menu) => (
-                <NavLink
-                  key={menu.key}
-                  to={menu.path}
-                  end={['/', '/home'].includes(menu.path)}
-                  aria-label={
-                    menu.path === '/notifications' ? notificationLabel(unreadCount) : undefined
-                  }
-                >
-                  {menu.path === '/notifications' ? (
-                    <Bell size={21} />
-                  ) : ['/', '/home'].includes(menu.path) ? (
-                    <Home size={21} />
-                  ) : menu.path === '/messages' ? (
-                    <MessageCircle size={21} />
-                  ) : menu.path === '/me' ? (
-                    <UserRound size={21} />
-                  ) : menu.path === '/people' ? (
-                    <UserPlus size={21} />
-                  ) : menu.path === '/communities' ? (
-                    <Users size={21} />
-                  ) : (
-                    <Compass size={21} />
+          {guest ? (
+            <Link to="/" className="guest-brand" aria-label="FpiUpdates home">
+              <BrandMark />
+            </Link>
+          ) : (
+            <Brand />
+          )}
+          {!guest && (
+            <>
+              <nav aria-label="Main navigation">
+                {availableMenus
+                  .filter((menu) =>
+                    [
+                      '/',
+                      '/home',
+                      '/search',
+                      '/notifications',
+                      '/me',
+                      '/communities',
+                      '/messages',
+                      '/people',
+                    ].includes(menu.path),
+                  )
+                  .map((menu) => (
+                    <NavLink
+                      key={menu.key}
+                      to={menu.path}
+                      end={['/', '/home'].includes(menu.path)}
+                      aria-label={
+                        menu.path === '/notifications' ? notificationLabel(unreadCount) : undefined
+                      }
+                    >
+                      {menu.path === '/notifications' ? (
+                        <Bell size={21} />
+                      ) : ['/', '/home'].includes(menu.path) ? (
+                        <Home size={21} />
+                      ) : menu.path === '/messages' ? (
+                        <MessageCircle size={21} />
+                      ) : menu.path === '/me' ? (
+                        <UserRound size={21} />
+                      ) : menu.path === '/people' ? (
+                        <UserPlus size={21} />
+                      ) : menu.path === '/communities' ? (
+                        <Users size={21} />
+                      ) : (
+                        <Compass size={21} />
+                      )}
+                      <span>{menu.label}</span>
+                      {menu.path === '/notifications' && <UnreadBadge />}
+                      {menu.path === '/messages' && <MessageBadge />}
+                    </NavLink>
+                  ))}
+                <MoreMenu
+                  menus={availableMenus.filter(
+                    (menu) =>
+                      ![
+                        '/',
+                        '/home',
+                        '/search',
+                        '/notifications',
+                        '/me',
+                        '/communities',
+                        '/messages',
+                        '/people',
+                      ].includes(menu.path),
                   )}
-                  <span>{menu.label}</span>
-                  {menu.path === '/notifications' && <UnreadBadge />}
-                  {menu.path === '/messages' && <MessageBadge />}
-                </NavLink>
-              ))}
-            <MoreMenu
-              menus={availableMenus.filter(
-                (menu) =>
-                  ![
-                    '/',
-                    '/home',
-                    '/search',
-                    '/notifications',
-                    '/me',
-                    '/communities',
-                    '/messages',
-                    '/people',
-                  ].includes(menu.path),
-              )}
-            />
-          </nav>
-          <button
-            disabled={session.loading}
-            onClick={() => (session.user ? ui.compose() : ui.auth('register'))}
-            className="button primary sidebar-cta"
-          >
-            <Feather size={18} />
-            {session.user ? 'Post' : 'Join the community'}
-          </button>
-          <div className="sidebar-account">
-            {session.user ? (
-              <>
-                <Link to={`/u/${session.user.username}`} className="account-person">
-                  <Avatar user={session.user} />
-                  <span>
-                    <strong>{session.user.displayName}</strong>
-                    <small>@{session.user.username}</small>
-                  </span>
-                </Link>
-                <button
-                  className="icon-button"
-                  title="Sign out"
-                  aria-label="Sign out"
-                  onClick={() => void logout()}
-                >
-                  <LogOut size={18} />
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="guest-avatar small">F</span>
-                <span>
-                  Already one of us?
-                  <Link to="/login">
-                    Sign in <ArrowUpRight size={13} />
-                  </Link>
-                </span>
-              </>
-            )}
-          </div>
+                />
+              </nav>
+              <button
+                disabled={session.loading}
+                onClick={() => (session.user ? ui.compose() : ui.auth('register'))}
+                className="button primary sidebar-cta"
+              >
+                <Feather size={18} />
+                {session.user ? 'Post' : 'Join the community'}
+              </button>
+              <div className="sidebar-account">
+                {session.user ? (
+                  <>
+                    <Link to={`/u/${session.user.username}`} className="account-person">
+                      <Avatar user={session.user} />
+                      <span>
+                        <strong>{session.user.displayName}</strong>
+                        <small>@{session.user.username}</small>
+                      </span>
+                    </Link>
+                    <button
+                      className="icon-button"
+                      title="Sign out"
+                      aria-label="Sign out"
+                      onClick={() => void logout()}
+                    >
+                      <LogOut size={18} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="guest-avatar small">F</span>
+                    <span>
+                      Already one of us?
+                      <Link to="/login">
+                        Sign in <ArrowUpRight size={13} />
+                      </Link>
+                    </span>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </aside>
         <main id="main-content" className="main-column">
           {session.unavailable && (
@@ -331,30 +348,49 @@ function Layout() {
           </FeatureRoute>
         </main>
         <aside className="right-sidebar" ref={sidebarRef}>
-          <form
-            className="search-box"
-            onSubmit={(e) => {
-              e.preventDefault();
-              navigate(`/search?q=${encodeURIComponent(search.trim())}`);
-            }}
-          >
-            <Search size={18} />
-            <label className="sr-only" htmlFor="sidebar-search">
-              Search FpiUpdates
-            </label>
-            <input
-              id="sidebar-search"
-              value={search}
-              maxLength={80}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search FpiUpdates"
-            />
-            <kbd>↵</kbd>
-          </form>
-          <RelevantPeople />
-          <ContextPeople placement="top" />
-          <DiscoveryPanels />
-          <ContextPeople />
+          {guest ? (
+            <>
+              <section className="guest-entry-card">
+                <h2>Join FpiUpdates</h2>
+                <p>Your people. Your updates. Join the conversation.</p>
+                <GoogleButton />
+                <Link className="button primary full" to="/register">
+                  Create an account
+                </Link>
+                <Link className="button secondary full" to="/login">
+                  Sign in
+                </Link>
+              </section>
+              <RelevantPeople />
+            </>
+          ) : (
+            <>
+              <form
+                className="search-box"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  navigate(`/search?q=${encodeURIComponent(search.trim())}`);
+                }}
+              >
+                <Search size={18} />
+                <label className="sr-only" htmlFor="sidebar-search">
+                  Search FpiUpdates
+                </label>
+                <input
+                  id="sidebar-search"
+                  value={search}
+                  maxLength={80}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search FpiUpdates"
+                />
+                <kbd>↵</kbd>
+              </form>
+              <RelevantPeople />
+              <ContextPeople placement="top" />
+              <DiscoveryPanels />
+              <ContextPeople />
+            </>
+          )}
           <footer className="side-footer">
             <Link to="/about">About</Link> · <Link to="/help">Help</Link> ·{' '}
             <Link to="/install">Install app</Link> · <Link to="/privacy">Privacy</Link> ·{' '}
@@ -369,43 +405,41 @@ function Layout() {
           </footer>
         </aside>
       </div>
-      <nav className="mobile-nav" aria-label="Mobile navigation">
-        <NavLink to="/home" end>
-          <Home size={21} />
-          <span>Campus</span>
-        </NavLink>
-        <NavLink to="/search">
-          <Search size={21} />
-          <span>Explore</span>
-        </NavLink>
-        <NavLink
-          className="mobile-notifications"
-          to="/notifications"
-          aria-label={notificationLabel(unreadCount)}
+      {!guest && (
+        <nav className="mobile-nav" aria-label="Mobile navigation">
+          <NavLink to="/home" end>
+            <Home size={21} />
+            <span>Campus</span>
+          </NavLink>
+          <NavLink to="/search">
+            <Search size={21} />
+            <span>Explore</span>
+          </NavLink>
+          <NavLink to="/articles">
+            <Newspaper size={21} />
+            <span>Articles</span>
+          </NavLink>
+          <NavLink to={session.user ? `/u/${session.user.username}` : '/login'}>
+            <UserRound size={21} />
+            <span>Profile</span>
+          </NavLink>
+          <MoreMenu
+            menus={availableMenus.filter(
+              (m) => !['/home', '/', '/me', '/settings'].includes(m.path),
+            )}
+          />
+        </nav>
+      )}
+      {canShowMobileComposer(location.pathname, session.user) && (
+        <button
+          disabled={session.loading}
+          className="mobile-compose floating-compose"
+          onClick={() => ui.compose()}
+          aria-label="Write a post"
         >
-          <Bell size={21} />
-          <UnreadBadge />
-          <span>Alerts</span>
-        </NavLink>
-        <NavLink to={session.user ? `/u/${session.user.username}` : '/login'}>
-          <UserRound size={21} />
-          <span>Profile</span>
-        </NavLink>
-        <MoreMenu
-          menus={availableMenus.filter((m) => !['/home', '/', '/me', '/settings'].includes(m.path))}
-        />
-      </nav>
-      {!/^\/(?:posts|messages)\//.test(location.pathname) &&
-        !/^\/articles\/[^/]+/.test(location.pathname) && (
-          <button
-            disabled={session.loading}
-            className="mobile-compose floating-compose"
-            onClick={() => ui.compose()}
-            aria-label="Write a post"
-          >
-            <Feather size={24} />
-          </button>
-        )}
+          <Feather size={24} />
+        </button>
+      )}
       <GuestBanner />
     </div>
   );
@@ -425,8 +459,9 @@ function Feed() {
   const { user } = useSession();
   const [refresh, setRefresh] = useState(0);
   const [params, setParams] = useSearchParams();
-  const mode =
-    params.get('mode') === 'following'
+  const mode = !user
+    ? 'for-you'
+    : params.get('mode') === 'following'
       ? 'following'
       : params.get('mode') === 'community'
         ? 'community'
@@ -492,7 +527,7 @@ function Feed() {
       <div className="home-timeline-header">
         <h1 className="sr-only">Home</h1>
         <div className="feature-tabs feed-tabs" aria-label="Home timelines">
-          {['for-you', 'following'].map((value) => (
+          {(user ? ['for-you', 'following'] : ['for-you']).map((value) => (
             <button
               key={value}
               className={mode === value ? 'active' : ''}
@@ -507,36 +542,38 @@ function Feed() {
               {value === 'for-you' ? 'For you' : 'Following'}
             </button>
           ))}
-          <div className={'community-feed-tab ' + (mode === 'community' ? 'active' : '')}>
-            <button
-              className="community-tab-label"
-              aria-pressed={mode === 'community'}
-              onClick={() =>
-                setParams({ mode: 'community', ...(current ? { communityId: current.id } : {}) })
-              }
-            >
-              {current?.name ?? (communityLoading ? 'Loading…' : 'Your communities')}
-            </button>
-            <select
-              aria-label="Switch community feed"
-              value={current?.id ?? ''}
-              disabled={!communities.length}
-              onChange={(e) => {
-                setChosen(e.target.value);
-                setParams({ mode: 'community', communityId: e.target.value });
-              }}
-            >
-              <option value="" disabled>
-                Choose a community
-              </option>
-              {communities.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+          {user && (
+            <div className={'community-feed-tab ' + (mode === 'community' ? 'active' : '')}>
+              <button
+                className="community-tab-label"
+                aria-pressed={mode === 'community'}
+                onClick={() =>
+                  setParams({ mode: 'community', ...(current ? { communityId: current.id } : {}) })
+                }
+              >
+                {current?.name ?? (communityLoading ? 'Loading…' : 'Your communities')}
+              </button>
+              <select
+                aria-label="Switch community feed"
+                value={current?.id ?? ''}
+                disabled={!communities.length}
+                onChange={(e) => {
+                  setChosen(e.target.value);
+                  setParams({ mode: 'community', communityId: e.target.value });
+                }}
+              >
+                <option value="" disabled>
+                  Choose a community
                 </option>
-              ))}
-            </select>
-            <span aria-hidden="true">▾</span>
-          </div>
+                {communities.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <span aria-hidden="true">▾</span>
+            </div>
+          )}
         </div>
         <button
           className="icon-button feed-refresh"
@@ -550,10 +587,21 @@ function Feed() {
           <RefreshCw size={19} />
         </button>
       </div>
+      {user && !user.emailVerified && (
+        <section className="email-participation-note">
+          <strong>Confirm your email to join in</strong>
+          <p>You can read public conversations now.</p>
+          <Link className="content-link" to="/check-email?next=%2Fhome">
+            Verify your email →
+          </Link>
+        </section>
+      )}
+      <AccountNotices />
+      <ProfileCompletion />
       <OnboardingCard />
       <InstallPromotion />
       {mode === 'community' && communityError && <ErrorBox message={communityError} />}
-      {mode !== 'community' || current ? (
+      {user?.emailVerified && (mode !== 'community' || current) ? (
         <Composer
           key={mode === 'community' ? current?.id : 'public'}
           communityId={mode === 'community' ? current?.id : undefined}
@@ -704,9 +752,14 @@ function NotFound() {
 function HomeFeed() {
   const { user, loading } = useSession();
   if (loading) return <p className="loading-message">Loading…</p>;
-  return user ? <Feed /> : <Navigate to="/" replace />;
+  return <Feed />;
 }
 export default function App() {
+  const session = useSession();
+  const location = useLocation();
+  if (session.loading) return <StartupScreen />;
+  if (session.user && !session.user.emailVerified && !isPublicRoute(location.pathname))
+    return <VerifyEntry />;
   return (
     <>
       <AppearanceSync />
@@ -717,6 +770,16 @@ export default function App() {
         <Route path="/auth/google/setup" element={<GoogleSetup />} />
         <Route path="/login" element={<StandaloneAuth />} />
         <Route path="/register" element={<StandaloneAuth register />} />
+        <Route
+          path="/check-email"
+          element={
+            session.user && !session.user.emailVerified ? (
+              <VerifyEntry />
+            ) : (
+              <Navigate to={safeNext(new URLSearchParams(location.search).get('next'))} replace />
+            )
+          }
+        />
         <Route element={<Layout />}>
           <Route path="ads" element={<AdsPage />} />
           <Route path="admin/ads" element={<AdsPage review />} />
@@ -761,12 +824,26 @@ export default function App() {
           <Route path="people" element={<PeoplePage />} />
           <Route path="u/:username" element={<RichProfilePage />} />
           <Route path="posts/:id" element={<ConversationPage />} />
-          <Route path="about" element={<AboutPage />} />
+          <Route path="about" element={<ManagedPage />} />
+          <Route path="faq" element={<ManagedPage />} />
+          {[
+            'help-verification',
+            'help-usernames',
+            'help-email',
+            'help-posting',
+            'help-safety',
+            'help-notifications',
+            'help-contact',
+          ].map((path) => (
+            <Route key={path} path={path} element={<ManagedPage />} />
+          ))}
+          <Route path="help/:article" element={<ManagedPage />} />
+          <Route path="settings/verification" element={<IdentitySettings />} />
           <Route path="install" element={<PublicInfoPage />} />
-          <Route path="help" element={<PublicInfoPage />} />
-          <Route path="privacy" element={<PublicInfoPage />} />
-          <Route path="terms" element={<PublicInfoPage />} />
-          <Route path="guidelines" element={<PublicInfoPage />} />
+          <Route path="help" element={<ManagedPage />} />
+          <Route path="privacy" element={<ManagedPage />} />
+          <Route path="terms" element={<ManagedPage />} />
+          <Route path="guidelines" element={<ManagedPage />} />
           <Route path="advertise" element={<PublicInfoPage />} />
           <Route path="settings/safety" element={<SafetySettings />} />
           <Route path="settings" element={<SettingsPage />} />

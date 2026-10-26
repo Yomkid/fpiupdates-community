@@ -1,3 +1,4 @@
+import { VerifiedBadge } from './Identity';
 import { Bell, BellRing, Send } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -8,6 +9,7 @@ import { useSession } from './session';
 import { useInteractions } from './interactions';
 
 export function FollowAction({ author }: { author: User }) {
+  const navigate = useNavigate();
   const { user } = useSession();
   const ui = useInteractions();
   const [following, setFollowing] = useState(!!author.isFollowing);
@@ -45,6 +47,13 @@ export function FollowAction({ author }: { author: User }) {
         onClick={async () => {
           if (!user) {
             ui.auth();
+            return;
+          }
+          if (!user.emailVerified) {
+            navigate(
+              '/check-email?next=' +
+                encodeURIComponent(window.location.pathname + window.location.search),
+            );
             return;
           }
           setBusy(true);

@@ -1,3 +1,4 @@
+import { InstallPromotion } from './PWA';
 import { OccupationFields, GenderField, parseSkills } from './OccupationFields';
 import { BrandMark } from './BrandMark';
 import { GoogleButton } from './GoogleAuth';
@@ -20,165 +21,101 @@ function AuthForm({
   onMode: (register: boolean) => void;
   onSuccess: () => void;
 }) {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const location = useLocation();
-  const googleStatus = new URLSearchParams(location.search).get('google');
   const session = useSession();
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [topicsError, setTopicsError] = useState(false);
-  const [topicIds, setTopicIds] = useState<string[]>([]);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [chosen, setChosen] = useState('');
-  const [account, setAccount] = useState({
-    displayName: '',
-    email: '',
-    password: '',
-    dateOfBirth: '',
-    phoneNumber: '',
-    location: '',
-    gender: '',
-    occupation: '',
-    skills: [] as string[],
-  });
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [account, setAccount] = useState({ displayName: '', email: '', password: '' });
+  const heading = useRef<HTMLHeadingElement>(null);
+  const location = useLocation();
   useEffect(() => {
-    const heading = headingRef.current;
-    if (!heading) return;
-    heading.focus({ preventScroll: true });
-    const dialog = heading.closest('dialog');
-    if (dialog) dialog.scrollTop = 0;
-    else window.scrollTo(0, 0);
-  }, [step, register]);
-  useEffect(() => {
-    if (register)
-      api<Topic[]>('/catalog/topics')
-        .then(setTopics)
-        .catch(() => setTopicsError(true));
     setStep(0);
     setError('');
   }, [register]);
   useEffect(() => {
-    if (!register || step !== 1 || !account.displayName) return;
-    const c = new AbortController();
+    heading.current?.focus({ preventScroll: true });
+  }, [step]);
+  useEffect(() => {
+    if (!register || step !== 1) return;
+    const controller = new AbortController();
     api<string[]>('/auth/username-suggestions?name=' + encodeURIComponent(account.displayName), {
-      signal: c.signal,
+      signal: controller.signal,
     })
       .then(setSuggestions)
       .catch(() => {});
-    return () => c.abort();
+    return () => controller.abort();
   }, [step, register, account.displayName]);
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (busy) return;
+    const form = new FormData(event.currentTarget);
     setError('');
-    const f = new FormData(e.currentTarget);
     if (register && step === 0) {
       setStep(1);
       return;
     }
-    if (register && step === 1) {
-      setBusy(true);
-      try {
-        const name = String(f.get('username') ?? '')
-          .trim()
-          .toLowerCase();
-        const available = await api<{ available: boolean }>(
-          '/auth/username-availability?username=' + encodeURIComponent(name),
-        );
-        if (!available.available)
-          throw Error('That username is unavailable. Choose another one below.');
-        setChosen(name);
-        setStep(2);
-      } catch (e) {
-        setError(errorMessage(e));
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
-    if (register && step === 2) {
-      setAccount((a) => ({
-        ...a,
-        dateOfBirth: String(f.get('dateOfBirth') ?? ''),
-        phoneNumber: String(f.get('phoneNumber') ?? ''),
-        location: String(f.get('location') ?? ''),
-        gender: String(f.get('gender') ?? ''),
-        occupation: String(f.get('occupation') ?? ''),
-        skills: parseSkills(f.get('skills')),
-      }));
-      setStep(3);
-      return;
-    }
     setBusy(true);
     try {
-      const registration = {
-        displayName: account.displayName,
-        email: account.email,
-        password: account.password,
-        username: chosen,
-        topicIds,
-        ...Object.fromEntries(
-          Object.entries(account).filter(
-            ([key, value]) => !['displayName', 'email', 'password'].includes(key) && value !== '',
-          ),
-        ),
-      };
+      const username = String(form.get('username') ?? '')
+        .trim()
+        .toLowerCase();
+      if (register) {
+        const result = await api<{ available: boolean }>(
+          '/auth/username-availability?username=' + encodeURIComponent(username),
+        );
+        if (!result.available) throw Error('This username is unavailable. Try another.');
+      }
       await api('/auth/browser/' + (register ? 'register' : 'login'), {
         method: 'POST',
         body: JSON.stringify(
           register
-            ? registration
-            : { identifier: f.get('identifier'), password: f.get('password') },
+            ? { ...account, username }
+            : { identifier: form.get('identifier'), password: form.get('password') },
         ),
       });
       const me = await api<User>('/auth/me');
       session.setUser(me);
       onSuccess();
+      if (!me.emailVerified) {
+        const next = safeNext(
+          new URLSearchParams(location.search).get('next') ?? location.pathname + location.search,
+        );
+        navigate('/check-email?next=' + encodeURIComponent(next), { replace: true });
+      }
     } catch (e) {
       setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
   }
-  const headings = [
-    'Create your account',
-    'Choose your username',
-    'A little about you',
-    'What interests you?',
-  ];
-  const descriptions = [
-    'Your name, email and a secure password.',
-    'Choose the @name people will use to find you.',
-    'Everything here is optional. You can update it in Settings.',
-    'Choose a few topics, or start exploring and pick them later.',
-  ];
   return (
     <div className="account-form">
-      <h1 ref={headingRef} tabIndex={-1}>
-        {register ? headings[step] : 'Welcome back'}
+      <h1 ref={heading} tabIndex={-1}>
+        {register ? (step === 0 ? 'Create your account' : 'Choose your username') : 'Welcome back'}
       </h1>
-      <p>{register ? descriptions[step] : 'Sign in to continue the conversation.'}</p>
-      {googleStatus && (
-        <p className="auth-provider-note">
-          {googleStatus === 'existing'
-            ? 'An account already uses that email. Sign in, then connect Google in Settings.'
-            : 'Google sign-in was cancelled or could not be completed. Please try again.'}
+      <p>
+        {register
+          ? 'Just the essentials. Complete your profile later.'
+          : 'Sign in to continue the conversation.'}
+      </p>
+      {new URLSearchParams(location.search).has('google') && (
+        <p className="form-feedback info">
+          Google sign-in could not finish. Try again, or sign in to your existing account to connect
+          Google in Settings.
         </p>
       )}
       {(!register || step === 0) && <GoogleButton />}
-      {register && (
-        <div className="signup-progress" aria-label={`Step ${step + 1} of 4`}>
-          <span>Step {step + 1} of 4</span>
-          <div>
-            {headings.map((h, i) => (
-              <span key={h} className={i <= step ? 'complete' : ''} />
-            ))}
-          </div>
-        </div>
+      {register && step === 0 && (
+        <p className="form-note">
+          Represent a business, institution or public agency? Create an account with its public
+          name, then request identity review in Settings after confirming your email.
+        </p>
       )}
-      <form key={register ? 'register-' + step : 'login'} onSubmit={submit}>
+      {register && <p className="signup-step">Step {step + 1} of 2</p>}
+      <form key={(register ? 'register' : 'login') + step} onSubmit={submit}>
         {register ? (
           step === 0 ? (
             <>
@@ -187,9 +124,8 @@ function AuthForm({
                 name="displayName"
                 autoComplete="name"
                 value={account.displayName}
-                onChange={(v) => setAccount((a) => ({ ...a, displayName: v }))}
+                onChange={(displayName) => setAccount((a) => ({ ...a, displayName }))}
                 maxLength={80}
-                helper="Use the name you want people to see."
               />
               <AccountField
                 label="Email address"
@@ -197,9 +133,9 @@ function AuthForm({
                 type="email"
                 autoComplete="email"
                 value={account.email}
-                onChange={(v) => setAccount((a) => ({ ...a, email: v }))}
+                onChange={(email) => setAccount((a) => ({ ...a, email }))}
                 maxLength={254}
-                helper="We will send verification instructions here."
+                helper="We will send your verification link here."
               />
               <AccountField
                 label="Password"
@@ -207,53 +143,39 @@ function AuthForm({
                 type="password"
                 autoComplete="new-password"
                 value={account.password}
-                onChange={(v) => setAccount((a) => ({ ...a, password: v }))}
+                onChange={(password) => setAccount((a) => ({ ...a, password }))}
                 minLength={12}
                 maxLength={128}
                 helper="Use at least 12 characters."
               />
             </>
-          ) : step === 1 ? (
-            <>
-              <UsernameField key={chosen} initial={chosen} />
-              {suggestions.length > 0 && (
-                <div className="username-suggestions">
-                  <span>Try an available name</span>
-                  {suggestions.map((name) => (
-                    <button type="button" key={name} onClick={() => setChosen(name)}>
-                      @{name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className="form-note">
-                You can change this later. A username is reserved when your account is created.
-              </p>
-            </>
-          ) : step === 2 ? (
-            <div className="signup-optional-fields">
-              <PersonalFields user={account} />
-              <GenderField value={account.gender} />
-              <OccupationFields user={account} />
-            </div>
           ) : (
             <>
-              <InterestChoices topics={topics} selected={topicIds} onChange={setTopicIds} />
-              {topicsError && (
-                <p className="form-feedback info">
-                  Topics could not load. You can choose them later in Settings.
-                </p>
-              )}
-              <p className="form-note">
-                No topics selected? Your feed will still show conversations across FpiUpdates. Next,
-                you can discover people to follow.
-              </p>
+              <UsernameField key={chosen} initial={chosen} />
+              <div className="username-suggestions">
+                {suggestions.map((name) => (
+                  <button type="button" key={name} onClick={() => setChosen(name)}>
+                    @{name}
+                  </button>
+                ))}
+              </div>
               <label className="checkbox-label">
-                <input type="checkbox" required />I agree to the{' '}
-                <a href="/about" target="_blank" rel="noopener noreferrer">
-                  community guidelines
-                </a>
-                .
+                <input type="checkbox" required />{' '}
+                <span>
+                  I agree to the{' '}
+                  <Link to="/terms" target="_blank">
+                    Terms
+                  </Link>{' '}
+                  and{' '}
+                  <Link to="/guidelines" target="_blank">
+                    Community Guidelines
+                  </Link>
+                  , and have read the{' '}
+                  <Link to="/privacy" target="_blank">
+                    Privacy Policy
+                  </Link>
+                  .
+                </span>
               </label>
             </>
           )
@@ -272,55 +194,35 @@ function AuthForm({
               autoComplete="current-password"
               maxLength={128}
             />
-            <Link className="text-button" to="/forgot-password">
+            <Link to="/forgot-password" className="text-button">
               Forgot password?
             </Link>
           </>
         )}
         {error && (
-          <p className="form-feedback error" role="alert">
+          <div className="form-feedback error" role="alert">
             {error}
-          </p>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setError('')}
+              aria-label="Dismiss error"
+            >
+              ×
+            </button>
+          </div>
         )}
         <button className="button primary full" disabled={busy}>
           {busy
             ? 'Please wait…'
             : register
-              ? step < 3
-                ? 'Next'
-                : 'Create your account'
+              ? step === 0
+                ? 'Continue'
+                : 'Create account'
               : 'Sign in'}
         </button>
-        {register && step === 2 && (
-          <button
-            className="button secondary full"
-            type="button"
-            onClick={() => {
-              setAccount((a) => ({
-                ...a,
-                dateOfBirth: '',
-                phoneNumber: '',
-                location: '',
-                gender: '',
-                occupation: '',
-                skills: [],
-              }));
-              setStep(3);
-            }}
-          >
-            Skip for now
-          </button>
-        )}
-        {register && step > 0 && (
-          <button
-            className="text-button"
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setError('');
-              setStep((s) => s - 1);
-            }}
-          >
+        {register && step === 1 && (
+          <button type="button" className="text-button" disabled={busy} onClick={() => setStep(0)}>
             Previous step
           </button>
         )}
@@ -381,10 +283,10 @@ function AccountField({
       />
       <small
         id={id + '-hint'}
-        className={'field-hint ' + (message ? 'field-error' : touched ? 'field-success' : '')}
+        className={'field-hint ' + (message ? 'field-error' : '')}
         role={message ? 'alert' : undefined}
       >
-        {message || (touched ? '✓ Looks good.' : helper)}
+        {message || helper}
       </small>
     </label>
   );
@@ -427,6 +329,10 @@ export function InteractionProvider({ children }: { children: ReactNode }) {
   }
   function openCompose() {
     if (session.loading) return;
+    if (session.user && !session.user.emailVerified) {
+      navigate('/check-email?next=' + encodeURIComponent(location.pathname + location.search));
+      return;
+    }
     if (session.user) {
       setComposerStarted(true);
       setCompose(true);
@@ -454,7 +360,7 @@ export function InteractionProvider({ children }: { children: ReactNode }) {
           />
         </Modal>
       )}
-      {session.user && composerStarted && (
+      {session.user?.emailVerified && composerStarted && (
         <Modal open={compose} wide title="Create a post" onClose={() => setCompose(false)}>
           <p className="draft-note">Closing keeps this draft while this tab is open.</p>
           <Composer
@@ -486,7 +392,7 @@ export function StandaloneAuth({ register = false }: { register?: boolean }) {
     <main className="standalone-auth">
       <BackButton />
       <Link className="auth-wordmark" to="/">
-        FpiUpdates <span className="beta">BETA</span>
+        <BrandMark /> FpiUpdates <span className="beta">BETA</span>
       </Link>
       <AuthForm
         register={register}
@@ -521,6 +427,8 @@ export function WelcomePage() {
           <br />
           Rooted in Ilaro. Open to your next chapter.
         </p>
+        <GoogleButton />
+        <InstallPromotion />
         <Link className="button primary full" to="/register">
           Create your account
         </Link>

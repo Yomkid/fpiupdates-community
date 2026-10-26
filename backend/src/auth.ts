@@ -1,3 +1,5 @@
+import { reservedUsername, usernameUnavailable, lockUsernames, assertUsername } from './usernames';
+export { reservedUsername } from './usernames';
 import {
   BadRequestException,
   Query,
@@ -25,6 +27,9 @@ import { Database } from './database';
 import { LoginDto, RegisterDto } from './dtos';
 import { hashPassword, newToken, tokenHash, verifyPassword } from './security';
 export const publicUser = {
+  identityStatus: true,
+  identityCategory: true,
+  identityVerifiedAt: true,
   occupation: true,
   skills: true,
   profileCoverMediaId: true,
@@ -82,22 +87,26 @@ export class AuthService {
     const dateOfBirth = birthDate(dto.dateOfBirth);
     const passwordHash = await hashPassword(dto.password);
     try {
-      const user = await this.db.user.create({
-        data: {
-          gender: dto.gender,
-          occupation: dto.occupation,
-          skills: dto.skills,
-          onboardingStage: dto.topicIds?.length ? 'PEOPLE' : 'TOPICS',
-          phoneNumber: dto.phoneNumber,
-          dateOfBirth,
-          location: dto.location,
-          email: dto.email,
-          username: dto.username,
-          displayName: dto.displayName,
-          passwordHash,
-          roles: { create: { role: { connect: { key: 'member' } } } },
-        },
-        select: publicUser,
+      const user = await this.db.$transaction(async (tx) => {
+        await lockUsernames(tx);
+        await assertUsername(tx, dto.username);
+        return tx.user.create({
+          data: {
+            gender: dto.gender,
+            occupation: dto.occupation,
+            skills: dto.skills,
+            onboardingStage: dto.topicIds?.length ? 'PEOPLE' : 'TOPICS',
+            phoneNumber: dto.phoneNumber,
+            dateOfBirth,
+            location: dto.location,
+            email: dto.email,
+            username: dto.username,
+            displayName: dto.displayName,
+            passwordHash,
+            roles: { create: { role: { connect: { key: 'member' } } } },
+          },
+          select: publicUser,
+        });
       });
       if (dto.topicIds?.length)
         await this.db.userInterest.createMany({
@@ -145,17 +154,6 @@ export class AuthService {
     };
   }
 }
-export const reservedUsername = (name: string) =>
-  [
-    'admin',
-    'administrator',
-    'support',
-    'official',
-    'fpiupdates',
-    'fpi_updates',
-    'security',
-    'moderator',
-  ].includes(name.toLowerCase());
 export const SESSION_COOKIE = 'fpi_session';
 export function checkBrowserOrigin(req: Request) {
   const origin = req.headers.origin;
@@ -269,6 +267,10 @@ export class AuthController {
   @UseGuards(SessionGuard)
   async me(@Req() req: AuthRequest) {
     return {
+      identityStatus: req.account.identityStatus,
+      identityCategory: req.account.identityCategory,
+      identityVerifiedAt: req.account.identityVerifiedAt,
+      profileCompletionDismissed: req.account.profileCompletionDismissed,
       gender: req.account.gender,
       occupation: req.account.occupation,
       skills: req.account.skills,
@@ -300,13 +302,11 @@ export class AuthController {
   @Throttle({ default: { ttl: 60000, limit: 30 } })
   async username(@Query('username') value: string, @Req() req: AuthRequest) {
     const username = (typeof value === 'string' ? value : '').trim().toLowerCase();
-    if (
-      !/^[a-z0-9_]{3,30}$/.test(username) ||
-      (reservedUsername(username) && username !== req.account?.username)
-    )
-      return { available: false, valid: false };
-    const found = await this.db.user.findUnique({ where: { username }, select: { id: true } });
-    return { available: !found || found.id === req.account?.id, valid: true };
+    const valid = /^[a-z0-9_]{3,30}$/.test(username);
+    return {
+      available: valid && !(await usernameUnavailable(this.db, username, req.account?.id)),
+      valid,
+    };
   }
   @Get('username-suggestions')
   @Throttle({ default: { limit: 30, ttl: 60000 } })
@@ -332,7 +332,15 @@ export class AuthController {
       where: { username: { in: candidates } },
       select: { username: true },
     });
-    return candidates.filter((n) => !taken.some((u) => u.username === n)).slice(0, 3);
+    const holds = await this.db.usernameHold.findMany({
+      where: {
+        username: { in: candidates },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    });
+    return candidates
+      .filter((n) => !taken.some((u) => u.username === n) && !holds.some((h) => h.username === n))
+      .slice(0, 3);
   }
   @Post('logout')
   @HttpCode(204)

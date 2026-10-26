@@ -1,3 +1,5 @@
+import { sendAccountEmail } from './mail-template';
+import { lockUsernames, assertUsername } from './usernames';
 import { RecoveryService } from './mail-tokens';
 import {
   BadRequestException,
@@ -281,6 +283,8 @@ export class GoogleAuthService {
     const passwordHash = await hashPassword(newToken());
     try {
       const user = await this.db.$transaction(async (tx) => {
+        await lockUsernames(tx);
+        await assertUsername(tx, dto.username);
         const claimed = await tx.oAuthEnrollment.deleteMany({
           where: { id: enrollment.id, expiresAt: { gt: new Date() } },
         });
@@ -307,6 +311,14 @@ export class GoogleAuthService {
         } catch {
           console.warn('Verification delivery unavailable; Google member can resend.');
         }
+      if (enrollment.trustedEmail)
+        await sendAccountEmail(
+          this.db,
+          user.id,
+          'Welcome to FpiUpdates',
+          'Your Google account is connected. Join conversations and complete your profile whenever you are ready.',
+          '/home',
+        );
       return { user, next: enrollment.next, session: await this.auth.issue(user) };
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')

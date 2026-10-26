@@ -129,16 +129,14 @@ export class DiscoveryFeedController {
     const topics = cards.filter((c) => c.kind === 'TOPIC').slice(0, 5);
     const fallback = topics.length
       ? topics
-      : await this.db.topic
-          .findMany({ orderBy: { name: 'asc' }, take: 5 })
-          .then((ts) =>
-            ts.map((t) => ({
-              id: t.id,
-              title: t.name,
-              body: 'Community interest',
-              href: '/search?topicId=' + t.id,
-            })),
-          );
+      : await this.db.topic.findMany({ orderBy: { name: 'asc' }, take: 5 }).then((ts) =>
+          ts.map((t) => ({
+            id: t.id,
+            title: t.name,
+            body: 'Community interest',
+            href: '/search?topicId=' + t.id,
+          })),
+        );
     return {
       announcement: cards.find((c) => c.kind === 'ANNOUNCEMENT') ?? null,
       sponsored: cards.find((c) => c.kind === 'SPONSORED') ?? null,

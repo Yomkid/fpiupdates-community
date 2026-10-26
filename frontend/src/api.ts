@@ -7,6 +7,10 @@ export type TextEntity = {
   user: { id: string; username: string } | null;
 };
 export type User = {
+  identityStatus?: string;
+  identityCategory?: string | null;
+  identityVerifiedAt?: string | null;
+  profileCompletionDismissed?: boolean;
   gender?: string | null;
   occupation?: string | null;
   skills?: string[];

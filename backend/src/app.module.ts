@@ -1,3 +1,5 @@
+import { IdentityController, IdentityAdminController } from './identity';
+import { ContentController, ContentAdminController } from './site-content';
 import { AdsController, AdsReviewController } from './ads';
 import {
   PushService,
@@ -62,6 +64,10 @@ class HealthController {
 @Module({
   imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 180 }, ...notificationThrottles])],
   controllers: [
+    IdentityController,
+    IdentityAdminController,
+    ContentController,
+    ContentAdminController,
     AdsController,
     AdsReviewController,
     PushController,

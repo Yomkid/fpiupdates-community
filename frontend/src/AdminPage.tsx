@@ -1,3 +1,5 @@
+import { IdentityDesk } from './Identity';
+import { ContentDesk } from './ContentPages';
 import { FeatureSettings } from './Features';
 import { useToastNotice } from './toast';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -38,6 +40,9 @@ export default function AdminPage() {
   const session = useSession();
   const permissions = session.user?.permissions ?? [];
   const tabs = [
+    ['usernames', 'Username reservations', 'usernames.manage'],
+    ['verification', 'Verification & claims', 'verification.manage'],
+    ['content', 'Pages & Help', 'pages.edit'],
     ['features', 'Feature releases', 'features.manage'],
     ['sports', 'Sports', 'sports.manage'],
     ['discovery', 'Discovery', 'discovery.manage'],
@@ -67,6 +72,9 @@ export default function AdminPage() {
   useEffect(() => {
     if (!active) return;
     if (
+      active === 'usernames' ||
+      active === 'verification' ||
+      active === 'content' ||
       active === 'features' ||
       active === 'sports' ||
       active === 'analytics' ||
@@ -197,6 +205,9 @@ export default function AdminPage() {
           <section className="page-panel">
             {error && <ErrorBox message={error} />}
             {active === 'features' && <FeatureSettings />}
+            {active === 'usernames' && <IdentityDesk mode="usernames" />}
+            {active === 'verification' && <IdentityDesk mode="verification" />}
+            {active === 'content' && <ContentDesk />}
             {active === 'sports' && (
               <p>
                 <Link className="button primary" to="/sports/desk">
@@ -354,6 +365,8 @@ export default function AdminPage() {
                     {member.displayName} <small>@{member.username}</small>
                   </h3>
                   <p>
+                    <small>Account UUID: {member.id}</small>
+                    <br />
                     {member.status} · {member.roles.map((x) => x.role.name).join(', ') || 'Member'}
                   </p>
                   {permissions.includes('roles.manage') && (

@@ -1,3 +1,4 @@
+import { AccountNotices, VerifiedBadge } from './Identity';
 import { pushOwner } from './push-owner';
 import { BackButton } from './Navigation';
 import {
@@ -193,7 +194,10 @@ export function notificationLabel(count: number) {
 type Notice = {
   conversationPost?: Post | null;
   id: string;
-  actors?: Pick<User, 'id' | 'username' | 'displayName' | 'avatarMediaId'>[];
+  actors?: Pick<
+    User,
+    'id' | 'username' | 'displayName' | 'avatarMediaId' | 'identityStatus' | 'identityCategory'
+  >[];
   eventCount?: number;
   actorCount?: number;
   postCount?: number;
@@ -201,7 +205,10 @@ type Notice = {
   targetIsReply?: boolean;
   thumbnailMediaId?: string | null;
   kind: 'POST_ALERT' | 'MENTION' | 'LIKE' | 'REPLY' | 'FOLLOW' | 'REPOST' | 'QUOTE';
-  actor: Pick<User, 'id' | 'username' | 'displayName' | 'avatarMediaId'>;
+  actor: Pick<
+    User,
+    'id' | 'username' | 'displayName' | 'avatarMediaId' | 'identityStatus' | 'identityCategory'
+  >;
   createdAt: string;
   readAt: string | null;
   preview: string | null;
@@ -510,6 +517,7 @@ export function NotificationsPage() {
         </div>
       ) : (
         <>
+          <AccountNotices />
           {settingsOpen && <DesktopNotificationControls />}
           <div className="feature-tabs" aria-label="Notification filters">
             {['all', 'mentions', 'unread'].map((value) => (
@@ -633,7 +641,7 @@ export function NotificationsPage() {
                               />
                             )}
                             <p>
-                              {noticeText(item)}
+                              {noticeText(item)} <VerifiedBadge user={item.actor} />
                               {!item.readAt && <span className="unread-dot" aria-label="Unread" />}
                             </p>
                             {item.preview && item.kind !== 'POST_ALERT' && (

@@ -1,11 +1,13 @@
 {
   "name": "fpiupdates",
-  "version": "0.27.0",
+  "version": "0.29.2",
   "private": true,
   "scripts": {
     "start": "node scripts/start.mjs",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
-    "test": "npm --prefix backend test"
+    "test": "npm --prefix backend test",
+    "format": "prettier --write \"backend/src/**/*.{ts,js}\" \"backend/test/**/*.ts\" \"frontend/src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"backend/src/**/*.{ts,js}\" \"backend/test/**/*.ts\" \"frontend/src/**/*.{ts,tsx,css}\""
   },
   "devDependencies": {
     "prettier": "3.9.10"

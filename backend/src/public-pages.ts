@@ -50,6 +50,21 @@ const pages: Record<string, [string, string]> = {
   '/stats': ['Platform statistics / FpiUpdates', 'Public measurements of activity.'],
 };
 export async function publicPage(db: Database, path: string): Promise<PublicPage> {
+  const slug = path.slice(1).replace(/^help\//, 'help-');
+  if (/^(about|help(?:-[a-z0-9-]+)?|faq|privacy|terms|guidelines)$/.test(slug)) {
+    const document = await db.siteDocument.findUnique({ where: { slug } });
+    if (document?.publishedHtml)
+      return {
+        title: `${document.publishedTitle} / FpiUpdates`,
+        description: document.publishedHtml
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 180),
+        path,
+        public: true,
+      };
+  }
   if (pages[path])
     return { title: pages[path][0], description: pages[path][1], path, public: true };
   let m;

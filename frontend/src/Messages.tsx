@@ -1,3 +1,4 @@
+import { VerifiedBadge } from './Identity';
 import { EmojiButton } from './EmojiButton';
 import { EmojiText } from './EmojiText';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -275,7 +276,10 @@ export function MessagesPage() {
                 >
                   <Avatar user={row.other} />
                   <div>
-                    <strong>{row.other.displayName}</strong>
+                    <strong>
+                      {row.other.displayName}
+                      <VerifiedBadge user={row.other} />
+                    </strong>
                     <span>@{row.other.username}</span>
                     <p>
                       {row.pending ? 'Message request · ' : ''}
@@ -319,7 +323,10 @@ export function MessagesPage() {
                 <Link to={'/u/' + chat.other.username}>
                   <Avatar user={chat.other} />
                   <span>
-                    <strong>{chat.other.displayName}</strong>
+                    <strong>
+                      {chat.other.displayName}
+                      <VerifiedBadge user={chat.other} />
+                    </strong>
                     <small>@{chat.other.username}</small>
                   </span>
                 </Link>

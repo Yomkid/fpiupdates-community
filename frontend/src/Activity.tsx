@@ -1,3 +1,4 @@
+import { VerifiedBadge } from './Identity';
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api, errorMessage, type Post, type User } from './api';

@@ -1,3 +1,4 @@
+import { VerifiedBadge } from './Identity';
 import { ImageLightbox } from './ImageTools';
 import { ProfileMenu } from './ProfileMenu';
 import { FollowAction } from './Conversations';
@@ -66,7 +67,10 @@ function Connections({
             <Link to={'/u/' + u.username} onClick={onClose}>
               <Avatar user={u} />
               <span>
-                <strong>{u.displayName}</strong>
+                <strong>
+                  {u.displayName}
+                  <VerifiedBadge user={u} />
+                </strong>
                 <small>@{u.username}</small>
               </span>
             </Link>
@@ -246,7 +250,10 @@ export function RichProfilePage() {
                 )}
               </div>
             </div>
-            <h2>{profile.displayName}</h2>
+            <h2>
+              {profile.displayName}
+              <VerifiedBadge user={profile} />
+            </h2>
             <p className="profile-handle">
               @{profile.username} {profile.followsYou && <span className="pill">Follows you</span>}
             </p>
@@ -344,7 +351,10 @@ export function RichProfilePage() {
                       {mutual.data.slice(0, 2).map((u, i) => (
                         <span key={u.id}>
                           {i ? (mutual.total === 2 ? ' and ' : ', ') : ''}
-                          <strong>{u.displayName}</strong>
+                          <strong>
+                            {u.displayName}
+                            <VerifiedBadge user={u} />
+                          </strong>
                         </span>
                       ))}
                       {mutual.total > 2

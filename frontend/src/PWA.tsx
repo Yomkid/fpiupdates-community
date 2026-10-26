@@ -199,7 +199,8 @@ export function InstallPromotion() {
       <div>
         <strong>Keep your community close</strong>
         <p>Add FpiUpdates to your home screen for quicker access.</p>
-        <Link to="/install">See how to install →</Link>
+        <InstallApp />
+        <Link to="/install">Installation help →</Link>
       </div>
       <button
         className="icon-button"

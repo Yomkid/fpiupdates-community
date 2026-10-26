@@ -562,6 +562,20 @@ export class PostsService {
     };
   }
   async profile(username: string, viewer?: string) {
+    const currentOwner = await this.db.user.findUnique({
+      where: { username },
+      select: { id: true },
+    });
+    if (!currentOwner) {
+      const hold = await this.db.usernameHold.findUnique({ where: { username } });
+      if (hold?.redirect && hold.ownerId && (!hold.expiresAt || hold.expiresAt > new Date())) {
+        const owner = await this.db.user.findUnique({
+          where: { id: hold.ownerId },
+          select: { username: true },
+        });
+        if (owner) username = owner.username;
+      }
+    }
     if (!/^[a-z0-9_]{3,30}$/.test(username)) throw new NotFoundException('Profile not found');
     const user = await this.db.user.findFirst({
       where: { username, status: 'ACTIVE' },

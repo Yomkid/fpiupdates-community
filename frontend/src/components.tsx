@@ -1,3 +1,4 @@
+import { VerifiedBadge } from './Identity';
 import { watchEngagements } from './LiveEngagements';
 import { MetricCount, ShareMenu } from './EngagementUI';
 import { useFeatures } from './Features';
@@ -88,7 +89,10 @@ export function QuoteCard({
     >
       <Link className="quote-author" to={`/u/${post.author.username}`}>
         <Avatar user={post.author} />
-        <strong>{post.author.displayName}</strong>
+        <strong>
+          {post.author.displayName}
+          <VerifiedBadge user={post.author} />
+        </strong>
         <span>@{post.author.username}</span>
       </Link>
       <div className="quote-body">
@@ -295,6 +299,22 @@ export function Composer({
       setBusy(false);
     }
   }
+  if (user && !user.emailVerified)
+    return (
+      <div className="email-participation-note">
+        <strong>Confirm your email to reply or post</strong>
+        <p>Public conversations remain available to read.</p>
+        <Link
+          className="content-link"
+          to={
+            '/check-email?next=' +
+            encodeURIComponent(window.location.pathname + window.location.search)
+          }
+        >
+          Verify your email →
+        </Link>
+      </div>
+    );
   if (!user)
     return (
       <div className="join-composer">
@@ -489,7 +509,11 @@ export function ReplyPopup({
         <Avatar user={post.author} />
         <div>
           <Link to={`/u/${post.author.username}`}>
-            <strong>{post.author.displayName}</strong> <span>@{post.author.username}</span>
+            <strong>
+              {post.author.displayName}
+              <VerifiedBadge user={post.author} />
+            </strong>{' '}
+            <span>@{post.author.username}</span>
           </Link>
           <p>{post.article?.title ?? post.body}</p>
           <small>
@@ -650,6 +674,13 @@ export function PostCard({
       ui.auth();
       return;
     }
+    if (!user.emailVerified) {
+      navigate(
+        '/check-email?next=' +
+          encodeURIComponent(window.location.pathname + window.location.search),
+      );
+      return;
+    }
     if (engaging) return;
     metricsHold.current = Date.now() + 30000;
     setEngaging(true);
@@ -749,14 +780,19 @@ export function PostCard({
       <div className="post-content">
         <div className="post-top">
           <div className="post-author">
-            <Link
-              to={`/u/${post.author.username}`}
-              className="author-name"
-              title={post.author.displayName}
-            >
-              {post.author.displayName}
-            </Link>
-            <span title={'@' + post.author.username}>@{post.author.username}</span>
+            <span className="author-identity">
+              <Link
+                to={`/u/${post.author.username}`}
+                className="author-name"
+                title={post.author.displayName}
+              >
+                {post.author.displayName}
+              </Link>
+              <VerifiedBadge user={post.author} />
+            </span>
+            <span className="author-handle" title={'@' + post.author.username}>
+              @{post.author.username}
+            </span>
             <span className="dot">·</span>
             <Link
               to={post.article ? `/articles/${post.article.slug}` : `/posts/${post.id}`}
@@ -962,6 +998,13 @@ export function PostCard({
                 ui.auth();
                 return;
               }
+              if (!user.emailVerified) {
+                navigate(
+                  '/check-email?next=' +
+                    encodeURIComponent(window.location.pathname + window.location.search),
+                );
+                return;
+              }
               setReplying(true);
             }}
           >
@@ -977,6 +1020,13 @@ export function PostCard({
               onClick={() => {
                 if (!user) {
                   ui.auth();
+                  return;
+                }
+                if (!user.emailVerified) {
+                  navigate(
+                    '/check-email?next=' +
+                      encodeURIComponent(window.location.pathname + window.location.search),
+                  );
                   return;
                 }
                 setRepostMenu(!repostMenu);

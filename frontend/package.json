@@ -1,13 +1,14 @@
 {
   "name": "@fpiupdates/frontend",
-  "version": "0.28.0",
+  "version": "0.29.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:release-ui": "playwright test --config playwright.release.config.ts"
   },
   "dependencies": {
     "@emoji-mart/data": "^1.2.1",
