@@ -5879,18 +5879,40 @@ test('optional registration details remain private where appropriate and onboard
     occupation: 'Solar technician',
     skills: ['Solar installation', 'Writing'],
   };
-  await request(app.getHttpServer())
-    .post('/api/v1/auth/register')
-    .send({ ...payload, gender: 'INVALID' })
-    .expect(400);
-  await request(app.getHttpServer())
-    .post('/api/v1/auth/register')
-    .send({ ...payload, skills: Array.from({ length: 9 }, (_, i) => 'Skill ' + i) })
-    .expect(400);
-  const response = await request(app.getHttpServer())
-    .post('/api/v1/auth/register')
-    .send(payload)
-    .expect(201);
+    // Use a fresh app so registration attempts from earlier tests do not
+  // consume this test's rate-limit allowance.
+  const isolatedModule = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
+
+  const isolatedApp = isolatedModule.createNestApplication({ logger: false });
+  configureApp(isolatedApp, ['http://localhost:5173']);
+
+  let response: Awaited<ReturnType<request.Test['then']>>;
+
+  try {
+    await isolatedApp.init();
+
+    await request(isolatedApp.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({ ...payload, gender: 'INVALID' })
+      .expect(400);
+
+    await request(isolatedApp.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        ...payload,
+        skills: Array.from({ length: 9 }, (_, i) => 'Skill ' + i),
+      })
+      .expect(400);
+
+    response = await request(isolatedApp.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send(payload)
+      .expect(201);
+  } finally {
+    await isolatedApp.close();
+  }
   const id = response.body.user.id;
   ids.push(id);
   const headers = { Authorization: 'Bearer ' + response.body.accessToken };
