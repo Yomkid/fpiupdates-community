@@ -1,4 +1,5 @@
 import { PWAProvider } from './PWA';
+import { LaunchGate } from './LaunchGate';
 import { FeaturesProvider } from './Features';
 import { MessagesProvider } from './message-state';
 import { applyAppearance } from './Appearance';
@@ -15,7 +16,7 @@ import { ToastHost } from './toast';
 applyAppearance();
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <LaunchGate><BrowserRouter>
       <PWAProvider>
         <SessionProvider>
           <FeaturesProvider>
@@ -31,6 +32,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           </FeaturesProvider>
         </SessionProvider>
       </PWAProvider>
-    </BrowserRouter>
+    </BrowserRouter></LaunchGate>
   </React.StrictMode>,
 );

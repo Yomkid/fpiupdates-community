@@ -987,3 +987,14 @@ model SiteDocumentVersion {
 
   @@index([slug, createdAt])
 }
+
+model LaunchControl {
+  id             String   @id @default("platform")
+  mode           String   @default("OPEN") @db.VarChar(20)
+  launchAt       DateTime @default("2026-10-30T17:00:00Z") @db.Timestamptz(3)
+  title          String   @default("A place for our community to come together.") @db.VarChar(160)
+  message        String   @default("Discover conversations, campus updates and opportunities. FpiUpdates starts in Ilaro, and everyone is welcome.") @db.VarChar(500)
+  allowedPages   String[] @default([])
+  allowedUserIds String[] @default([])
+  updatedAt      DateTime @updatedAt
+}
