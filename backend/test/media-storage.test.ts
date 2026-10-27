@@ -19,6 +19,11 @@ test('media locations survive provider changes; R2 keys remain private and clean
     'R2_ACCESS_KEY_ID',
     'R2_SECRET_ACCESS_KEY',
     'R2_BUCKET',
+    'NEON_STORAGE_ENDPOINT',
+    'NEON_STORAGE_REGION',
+    'NEON_STORAGE_ACCESS_KEY_ID',
+    'NEON_STORAGE_SECRET_ACCESS_KEY',
+    'NEON_STORAGE_BUCKET',
   ];
   const old = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   const dir = await mkdtemp(join(tmpdir(), 'fpi-storage-'));
@@ -61,6 +66,18 @@ test('media locations survive provider changes; R2 keys remain private and clean
     process.env.R2_BUCKET = 'different-bucket';
     assert.deepEqual(await loadImage(id, cloud), bytes);
     await removeStoredImage(id, cloud);
+    assert.equal(objects.size, 0);
+    process.env.MEDIA_STORAGE_PROVIDER = 'neon';
+    process.env.NEON_STORAGE_ENDPOINT = 'https://br-test.storage.c-2.us-east-1.aws.neon.tech';
+    process.env.NEON_STORAGE_REGION = 'us-east-1';
+    process.env.NEON_STORAGE_ACCESS_KEY_ID = 'test';
+    process.env.NEON_STORAGE_SECRET_ACCESS_KEY = 'test';
+    process.env.NEON_STORAGE_BUCKET = 'fpi-neon-test';
+    const neonLocation = await storeImage(id, bytes);
+    assert.equal(neonLocation.storageProvider, 'neon');
+    process.env.MEDIA_STORAGE_PROVIDER = 'local';
+    assert.deepEqual(await loadImage(id, neonLocation), bytes);
+    await removeStoredImage(id, neonLocation);
     assert.equal(objects.size, 0);
     await removeStoredImage(id, local);
   } finally {

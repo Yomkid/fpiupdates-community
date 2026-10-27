@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { storeImage, loadImage, removeStoredImage } from './media-storage';
 async function main() {
-  if (process.env.MEDIA_STORAGE_PROVIDER !== 'r2')
-    throw new Error('Set MEDIA_STORAGE_PROVIDER=r2 in backend/.env first');
+  if (!['r2', 'neon'].includes(process.env.MEDIA_STORAGE_PROVIDER ?? ''))
+    throw new Error('Select a cloud media storage provider first');
   const id = randomUUID();
   const image = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#15803d' } })
     .webp()
@@ -14,7 +14,7 @@ async function main() {
   try {
     const read = await loadImage(id, location);
     if (!read.equals(image)) throw new Error('Stored image did not match');
-    console.log('R2 upload and download verified.');
+    console.log('Cloud storage upload and download verified.');
   } catch (error) {
     failure = error;
   } finally {
@@ -31,11 +31,11 @@ async function main() {
       throw error;
   }
   if (failure) throw failure;
-  console.log('R2 deletion verified. No database or profile data changed.');
+  console.log('Cloud storage deletion verified. No database or profile data changed.');
 }
 main().catch(() => {
   console.error(
-    'Storage test failed. Check R2 settings, bucket permissions and connectivity; no credentials are printed.',
+    'Storage test failed. Check settings, bucket permissions and connectivity; no credentials are printed.',
   );
   process.exitCode = 1;
 });
