@@ -40,6 +40,7 @@ export type User = {
 };
 export type Topic = { id: string; slug: string; name: string };
 export type Community = {
+  logoMediaId?: string | null;
   id: string;
   slug: string;
   name: string;

@@ -156,14 +156,31 @@ export default function AdminPage() {
         enabled: form.has('enabled'),
         position: Number(form.get('position')),
       });
-    if (active === 'communities')
+    if (active === 'communities') {
+      let logoMediaId = editing?.logoMediaId ?? null;
+      const logo = form.get('communityLogo');
+      if (form.has('removeCommunityLogo')) {
+        logoMediaId = null;
+      } else if (logo instanceof File && logo.size > 0) {
+        try {
+          const body = new FormData();
+          body.append('file', logo);
+          logoMediaId = (await api<{ id: string }>('/media/community', { method: 'POST', body }))
+            .id;
+        } catch (e) {
+          setError(errorMessage(e));
+          return;
+        }
+      }
       await mutate(`/admin/communities/${editing?.id ?? crypto.randomUUID()}`, {
         slug: form.get('slug'),
         name: form.get('name'),
         description: form.get('description'),
         kind: form.get('kind'),
         active: form.has('active'),
+        logoMediaId,
       });
+    }
     if (active === 'topics')
       await mutate(`/admin/topics/${editing?.id ?? crypto.randomUUID()}`, {
         slug: form.get('slug'),
@@ -577,6 +594,20 @@ export default function AdminPage() {
                     )}
                     {active === 'communities' && (
                       <>
+                        <label>
+                          Community logo{' '}
+                          <input
+                            name="communityLogo"
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                          />
+                        </label>
+                        {editing.logoMediaId && (
+                          <label className="checkbox-label">
+                            <input type="checkbox" name="removeCommunityLogo" /> Remove existing
+                            logo
+                          </label>
+                        )}
                         <label>
                           Description
                           <textarea

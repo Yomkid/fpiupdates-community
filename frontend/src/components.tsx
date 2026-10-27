@@ -684,6 +684,17 @@ export function PostCard({
     if (engaging) return;
     metricsHold.current = Date.now() + 30000;
     setEngaging(true);
+    const previous = post;
+    if (kind === 'likes') {
+      setPost((current) => ({
+        ...current,
+        viewer: { ...current.viewer, liked: !current.viewer.liked },
+        _count: {
+          ...current._count,
+          likes: Math.max(0, current._count.likes + (current.viewer.liked ? -1 : 1)),
+        },
+      }));
+    }
     try {
       const active =
         kind === 'likes'
@@ -708,6 +719,7 @@ export function PostCard({
         window.dispatchEvent(new Event('feed-updated'));
       }
     } catch (e) {
+      if (kind === 'likes') setPost(previous);
       toast(errorMessage(e), 'error');
     } finally {
       metricsHold.current = Date.now() + 1500;
@@ -1251,11 +1263,14 @@ export function PostList({
       setLoading(false);
       return () => controller.abort();
     }
-    loadedKey.current = null;
-    setLoading(true);
+    const sameFeed = loadedKey.current === cacheKey;
+    if (!sameFeed) loadedKey.current = null;
+    setLoading(!sameFeed);
     setError('');
-    setPosts([]);
-    setCursor(null);
+    if (!sameFeed) {
+      setPosts([]);
+      setCursor(null);
+    }
     api<Page>(endpoint + (endpoint.includes('?') ? '&' : '?') + 'limit=15', {
       signal: controller.signal,
     })

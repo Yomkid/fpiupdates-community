@@ -148,8 +148,34 @@ export class IdentityAdminController {
       orderBy: { createdAt: 'desc' },
     });
   }
-  @Get('holds') @RequirePermission('usernames.manage') holds() {
-    return this.db.usernameHold.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+  @Get('assignment-users') @RequirePermission('usernames.manage') assignmentUsers(
+    @Query('q') q = '',
+  ) {
+    const query = q.trim();
+    if (query.length > 80) throw new BadRequestException();
+    if (query.length < 2) return [];
+    return this.db.user.findMany({
+      where: {
+        OR: [
+          { username: { contains: query.toLowerCase() } },
+          { displayName: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      select: publicUser,
+      take: 20,
+      orderBy: { username: 'asc' },
+    });
+  }
+  @Get('holds') @RequirePermission('usernames.manage') async holds() {
+    const rows = await this.db.usernameHold.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+    const ownerIds = rows.flatMap((row) => (row.ownerId ? [row.ownerId] : []));
+    const owners = ownerIds.length
+      ? await this.db.user.findMany({ where: { id: { in: ownerIds } }, select: publicUser })
+      : [];
+    return rows.map((row) => ({
+      ...row,
+      owner: owners.find((owner) => owner.id === row.ownerId) ?? null,
+    }));
   }
   @Put('holds/:name') @RequirePermission('usernames.manage') async hold(
     @Param('name') name: string,
@@ -169,10 +195,6 @@ export class IdentityAdminController {
       if (existing?.ownerId)
         throw new BadRequestException('An account-linked protection cannot be released here.');
       if (dto.release) {
-        if (['fpiupdates', 'fpi_updates', 'official'].includes(name))
-          throw new BadRequestException(
-            'This built-in reservation cannot be publicly released. It can be assigned to an approved account.',
-          );
         await tx.usernameHold.deleteMany({ where: { username: name } });
       } else
         await tx.usernameHold.upsert({

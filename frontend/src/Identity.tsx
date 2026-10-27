@@ -375,6 +375,9 @@ export function AccountNotices() {
   );
 }
 export function IdentityDesk({ mode }: { mode: 'usernames' | 'verification' }) {
+  const [assignmentQuery, setAssignmentQuery] = useState('');
+  const [assignmentResults, setAssignmentResults] = useState<User[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<User | null>(null);
   const [rows, setRows] = useState<any[]>([]),
     [users, setUsers] = useState<User[]>([]),
     [query, setQuery] = useState(''),
@@ -401,6 +404,27 @@ export function IdentityDesk({ mode }: { mode: 'usernames' | 'verification' }) {
       c.abort();
     };
   }, [mode, query, refresh]);
+  useEffect(() => {
+    if (mode !== 'usernames' || selectedAccount || assignmentQuery.trim().length < 2) {
+      setAssignmentResults([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      api<User[]>(
+        '/admin/identity/assignment-users?q=' + encodeURIComponent(assignmentQuery.trim()),
+        { signal: controller.signal },
+      )
+        .then(setAssignmentResults)
+        .catch((e) => {
+          if (!controller.signal.aborted) setError(errorMessage(e));
+        });
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [mode, assignmentQuery, selectedAccount]);
   async function save(path: string, data: unknown) {
     if (busy) return;
     setBusy(true);
@@ -464,17 +488,49 @@ export function IdentityDesk({ mode }: { mode: 'usernames' | 'verification' }) {
           </form>
           <h2>Assign a username</h2>
           <p>
-            Use the target account’s UUID from Accounts. This changes its handle, preserves its
-            content and protects its former name. Existing ownership conflicts are blocked.
+            Choose the target account below. This changes its handle, preserves its content and
+            protects its former name. Existing ownership conflicts are blocked.
           </p>
           <form
             className="feature-form"
             onSubmit={(e) => form(e, 'assign', (f) => Object.fromEntries(f))}
           >
             <label>
-              Account UUID
-              <input name="userId" required />
+              Find an account
+              <input
+                value={assignmentQuery}
+                onChange={(e) => {
+                  setAssignmentQuery(e.target.value);
+                  setSelectedAccount(null);
+                }}
+                placeholder="Search by username or name"
+              />
             </label>
+            {assignmentResults.map((account) => (
+              <button
+                type="button"
+                className="assignment-account"
+                key={account.id}
+                onClick={() => {
+                  setSelectedAccount(account);
+                  setAssignmentQuery(account.displayName + ' @' + account.username);
+                }}
+              >
+                <Avatar user={account} />
+                <span>
+                  <strong>{account.displayName}</strong> @{account.username}
+                </span>
+              </button>
+            ))}
+            {selectedAccount && (
+              <p>
+                Selected: {selectedAccount.displayName} (@{selectedAccount.username})
+              </p>
+            )}
+            {!selectedAccount && assignmentQuery.trim().length >= 2 && assignmentResults.length === 0 && (
+              <p className="form-note">Searching for matching accounts, or no matches found.</p>
+            )}
+            <input type="hidden" name="userId" value={selectedAccount?.id ?? ''} />
             <label>
               New username
               <input name="username" required pattern="[a-z0-9_]{3,30}" />
@@ -487,17 +543,23 @@ export function IdentityDesk({ mode }: { mode: 'usernames' | 'verification' }) {
               <input type="checkbox" required />I checked the account and authority to receive this
               name.
             </label>
-            <button className="button primary" disabled={busy}>
+            <button className="button primary" disabled={busy || !selectedAccount}>
               Assign username
             </button>
           </form>
+          <h2>Reserved usernames</h2>
+          {rows.length === 0 && <p className="form-note">No reservations found.</p>}
           {rows.map((row) => (
             <article className="identity-row" key={row.username}>
               <strong>@{row.username}</strong>
               <p>{row.reason}</p>
               <small>
-                {row.ownerId ? 'Account protection · ' + row.ownerId : 'Unassigned'} ·{' '}
-                {row.expiresAt ? new Date(row.expiresAt).toLocaleDateString() : 'No expiry'}
+                {row.ownerId
+                  ? row.owner
+                    ? 'Account protection · @' + row.owner.username
+                    : 'Account protection'
+                  : 'Unassigned'}{' '}
+                · {row.expiresAt ? new Date(row.expiresAt).toLocaleDateString() : 'No expiry'}
               </small>
             </article>
           ))}
@@ -574,7 +636,6 @@ export function IdentityDesk({ mode }: { mode: 'usernames' | 'verification' }) {
                   <BadgeSymbol category={user.identityCategory} />
                 )}
               </summary>
-              <p className="muted">Account UUID: {user.id}</p>
               <form
                 className="feature-form"
                 onSubmit={(e) => form(e, 'users/' + user.id, (f) => Object.fromEntries(f))}

@@ -259,6 +259,8 @@ model UserInterest {
 }
 
 model Community {
+  logoMediaId String?           @db.Uuid
+  logoMedia   Media?            @relation(fields: [logoMediaId], references: [id], onDelete: SetNull)
   id          String            @id @default(uuid()) @db.Uuid
   slug        String            @unique @db.VarChar(80)
   name        String            @db.VarChar(100)
@@ -388,6 +390,7 @@ model AuditLog {
 }
 
 model Media {
+  communities     Community[]
   storageProvider String         @default("local") @db.VarChar(10)
   storageBucket   String?        @db.VarChar(100)
   storageKey      String?        @db.VarChar(200)

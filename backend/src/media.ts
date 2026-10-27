@@ -41,7 +41,7 @@ export class MediaService {
       throw new BadRequestException('Select an image uploaded by you for this purpose');
   }
   async upload(ownerId: string, kind: string, file?: Express.Multer.File) {
-    if (!['AVATAR', 'POST', 'COVER', 'PROFILE', 'SPORT'].includes(kind))
+    if (!['AVATAR', 'POST', 'COVER', 'PROFILE', 'SPORT', 'COMMUNITY'].includes(kind))
       throw new BadRequestException('Unknown image purpose');
     if (!file?.buffer?.length) throw new BadRequestException('Select an image');
     if (file.size > MAX_UPLOAD_BYTES)
@@ -75,8 +75,8 @@ export class MediaService {
       encoded = await image
         .rotate()
         .resize({
-          width: kind === 'AVATAR' ? 512 : 1920,
-          height: kind === 'AVATAR' ? 512 : 1920,
+          width: ['AVATAR', 'COMMUNITY'].includes(kind) ? 512 : 1920,
+          height: ['AVATAR', 'COMMUNITY'].includes(kind) ? 512 : 1920,
           fit: 'inside',
           withoutEnlargement: true,
         })
@@ -193,7 +193,17 @@ export class MediaService {
               select: { id: true },
             })
           : null;
-      if (!avatar && !post && !cover && !privateCover && !sports)
+      const community =
+        !avatar && !post && !cover && !privateCover && !sports
+          ? await this.db.community.findFirst({
+              where: {
+                logoMediaId: id,
+                ...(permissions.includes('communities.manage') ? {} : { active: true }),
+              },
+              select: { id: true },
+            })
+          : null;
+      if (!avatar && !post && !cover && !privateCover && !sports && !community)
         throw new NotFoundException('Image not found');
     }
     try {
@@ -221,6 +231,8 @@ export class MediaController {
   ) {
     if (kind.toUpperCase() === 'SPORT' && !req.permissions.includes('sports.manage'))
       throw new ForbiddenException('Sports management permission required');
+    if (kind.toUpperCase() === 'COMMUNITY' && !req.permissions.includes('communities.manage'))
+      throw new ForbiddenException('Community management permission required');
     if (kind.toUpperCase() === 'COVER' && !req.permissions.includes('articles.write'))
       throw new ForbiddenException('Editorial permission required');
     return this.media.upload(req.account.id, kind.toUpperCase(), file);
