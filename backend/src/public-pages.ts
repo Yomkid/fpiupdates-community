@@ -25,7 +25,7 @@ export type PublicPage = {
 const pages: Record<string, [string, string]> = {
   '/': [
     'FpiUpdates — Your community, connected.',
-    'Conversations, useful updates and lasting connections. Rooted in Ilaro, open to every chapter.',
+    'Conversations, news and opportunities for your community.',
   ],
   '/about': ['About FpiUpdates', 'Our story and the community we are rebuilding.'],
   '/install': ['Install FpiUpdates', 'Installation guides for iPhone, Android and computers.'],
@@ -71,7 +71,7 @@ export async function publicPage(db: Database, path: string): Promise<PublicPage
   if ((m = /^\/u\/([a-zA-Z0-9_]{3,30})$/.exec(path))) {
     const u = await db.user.findFirst({
       where: { username: { equals: m[1], mode: 'insensitive' }, ...visibleAuthor() },
-      select: { username: true, displayName: true, bio: true },
+      select: { username: true, displayName: true, bio: true, avatarMediaId: true },
     });
     if (u)
       return {
@@ -80,6 +80,7 @@ export async function publicPage(db: Database, path: string): Promise<PublicPage
         path: '/u/' + u.username,
         public: true,
         author: u.displayName,
+        image: u.avatarMediaId ?? undefined,
         kind: 'profile',
       };
     return unavailable(path, 'Profile');
@@ -143,13 +144,15 @@ export function metadata(p: PublicPage) {
     b = publicBase(),
     image = p.image
       ? `${b}/api/v1/media/${p.image}`
-      : `${b}/og.png?path=${encodeURIComponent(p.path)}`;
-  return `<title>${e(p.title)}</title><meta name="description" content="${e(p.description)}"><meta name="robots" content="${p.public ? 'index,follow' : 'noindex,nofollow'}"><link rel="canonical" href="${e(b + p.path)}"><meta property="og:site_name" content="FpiUpdates"><meta property="og:type" content="${p.kind ?? 'website'}"><meta property="og:title" content="${e(p.title)}"><meta property="og:description" content="${e(p.description)}"><meta property="og:url" content="${e(b + p.path)}"><meta property="og:image" content="${e(image)}"><meta property="og:image:alt" content="${e(p.title)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${e(p.title)}"><meta name="twitter:description" content="${e(p.description)}"><meta name="twitter:image" content="${e(image)}">`;
+      : `${b}/fpiupdates-share-v1.png`;
+  return `<title>${e(p.title)}</title><meta name="description" content="${e(p.description)}"><meta name="robots" content="${p.public ? 'index,follow' : 'noindex,nofollow'}"><link rel="canonical" href="${e(b + p.path)}"><meta property="og:site_name" content="FpiUpdates"><meta property="og:type" content="${p.kind ?? 'website'}"><meta property="og:title" content="${e(p.title)}"><meta property="og:description" content="${e(p.description)}"><meta property="og:url" content="${e(b + p.path)}"><meta property="og:image" content="${e(image)}"><meta property="og:image:alt" content="${e(p.title)}"><meta name="twitter:card" content="${p.kind === 'profile' && p.image ? 'summary' : 'summary_large_image'}"><meta name="twitter:title" content="${e(p.title)}"><meta name="twitter:description" content="${e(p.description)}"><meta name="twitter:image" content="${e(image)}">`;
 }
 export function renderPublicHtml(template: string, p: PublicPage) {
   const clean = template
     .replace(/<title>.*?<\/title>/s, '')
-    .replace(/<meta name="description"[^>]*>/, '');
+    .replace(/<meta name="description"[^>]*>/, '')
+    .replace(/<meta (?:property="og:[^"]+"|name="twitter:[^"]+")[^>]*>/g, '')
+    .replace(/<link rel="canonical"[^>]*>/g, '');
   const summary = p.public
     ? `<article><h1>${escapeHtml(p.title)}</h1>${p.author ? `<p>${escapeHtml(p.author)}</p>` : ''}<p>${escapeHtml(p.description)}</p><a href="/articles">Articles</a> · <a href="/about">About FpiUpdates</a></article>`
     : '';
