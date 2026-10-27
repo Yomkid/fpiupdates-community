@@ -1,4 +1,5 @@
 import { IdentityDesk } from './Identity';
+import { LaunchAdmin } from './LaunchAdmin';
 import { ContentDesk } from './ContentPages';
 import { FeatureSettings } from './Features';
 import { useToastNotice } from './toast';
@@ -44,6 +45,7 @@ export default function AdminPage() {
     ['verification', 'Verification & claims', 'verification.manage'],
     ['content', 'Pages & Help', 'pages.edit'],
     ['features', 'Feature releases', 'features.manage'],
+    ['launch', 'Launch & maintenance', 'features.manage'],
     ['sports', 'Sports', 'sports.manage'],
     ['discovery', 'Discovery', 'discovery.manage'],
     ['analytics', 'Analytics', 'analytics.view'],
@@ -76,6 +78,7 @@ export default function AdminPage() {
       active === 'verification' ||
       active === 'content' ||
       active === 'features' ||
+      active === 'launch' ||
       active === 'sports' ||
       active === 'analytics' ||
       active === 'discovery'
@@ -222,6 +225,7 @@ export default function AdminPage() {
           <section className="page-panel">
             {error && <ErrorBox message={error} />}
             {active === 'features' && <FeatureSettings />}
+            {active === 'launch' && <LaunchAdmin />}
             {active === 'usernames' && <IdentityDesk mode="usernames" />}
             {active === 'verification' && <IdentityDesk mode="verification" />}
             {active === 'content' && <ContentDesk />}

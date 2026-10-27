@@ -1,7 +1,7 @@
 // One worker handles installation, a public offline page and existing notifications.
 // Never cache private pages, API responses, mail/reset links, avatars or messages.
-const CACHE='fpiupdates-public-v030';
-const PUBLIC=['/offline.html','/manifest.webmanifest','/pwa/icon-192.png','/pwa/icon-512.png','/pwa/icon-white.png'];
+const CACHE='fpiupdates-public-v031';
+const PUBLIC=['/offline.html','/manifest.webmanifest','/pwa/icon-light-192.png','/pwa/icon-light-512.png','/pwa/icon-light-maskable-192.png','/pwa/icon-light-maskable-512.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PUBLIC.map(url=>new Request(url,{credentials:'omit',cache:'reload'}))))));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const key of await caches.keys())if(key.startsWith('fpiupdates-public-')&&key!==CACHE)await caches.delete(key);await self.clients.claim();})()));
 self.addEventListener('message',event=>{if(event.data?.type==='ACTIVATE_UPDATE')self.skipWaiting();});
@@ -21,4 +21,4 @@ self.addEventListener('notificationclick',event=>{
  })());
 });
 
-self.addEventListener('push',event=>{event.waitUntil((async()=>{let data={};try{data=event.data?.json()||{};}catch{}for(const w of await self.clients.matchAll({type:'window',includeUncontrolled:true}))w.postMessage({type:'INBOX_UPDATED'});await self.registration.showNotification('FpiUpdates',{body:typeof data.body==='string'?data.body.slice(0,200):'You have new activity. Open FpiUpdates to catch up.',icon:'/pwa/icon-192.png',badge:'/pwa/badge.png',tag:'fpiupdates-inbox',data:{href:'/notifications'}});})());});
+self.addEventListener('push',event=>{event.waitUntil((async()=>{let data={};try{data=event.data?.json()||{};}catch{}for(const w of await self.clients.matchAll({type:'window',includeUncontrolled:true}))w.postMessage({type:'INBOX_UPDATED'});await self.registration.showNotification('FpiUpdates',{body:typeof data.body==='string'?data.body.slice(0,200):'You have new activity. Open FpiUpdates to catch up.',icon:'/pwa/icon-light-192.png',badge:'/pwa/badge.png',tag:'fpiupdates-inbox',data:{href:'/notifications'}});})());});

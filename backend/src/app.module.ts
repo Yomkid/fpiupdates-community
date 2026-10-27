@@ -1,4 +1,5 @@
 import { IdentityController, IdentityAdminController } from './identity';
+import { LaunchAdminController } from './launch-admin';
 import { ContentController, ContentAdminController } from './site-content';
 import { AdsController, AdsReviewController } from './ads';
 import {
@@ -64,6 +65,7 @@ class HealthController {
 @Module({
   imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 180 }, ...notificationThrottles])],
   controllers: [
+    LaunchAdminController,
     IdentityController,
     IdentityAdminController,
     ContentController,

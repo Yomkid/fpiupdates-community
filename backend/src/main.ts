@@ -1,4 +1,6 @@
 import { hostFrontend } from './frontend-host';
+import { createLaunchGate } from './launch-gate';
+import { Database } from './database';
 import 'dotenv/config';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
@@ -17,6 +19,7 @@ async function bootstrap() {
   }
   app.use(json({ limit: '128kb' }));
   configureApp(app, config.origins);
+  app.use(createLaunchGate(app.get(Database)));
   hostFrontend(app);
   await app.listen(config.port, '0.0.0.0');
 }
