@@ -288,6 +288,16 @@ export class AdminController {
     @Req() req: AuthRequest,
   ) {
     return this.db.$transaction(async (tx) => {
+      if (dto.logoMediaId) {
+        const old = await tx.community.findUnique({ where: { id }, select: { logoMediaId: true } });
+        if (
+          old?.logoMediaId !== dto.logoMediaId &&
+          !(await tx.media.findFirst({
+            where: { id: dto.logoMediaId, ownerId: req.account.id, kind: 'COMMUNITY' },
+          }))
+        )
+          throw new BadRequestException('Select a community logo uploaded by your account');
+      }
       const row = await tx.community.upsert({ where: { id }, create: { id, ...dto }, update: dto });
       await tx.auditLog.create({
         data: {

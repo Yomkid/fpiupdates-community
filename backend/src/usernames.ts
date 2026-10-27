@@ -1,8 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 export const SYSTEM_NAMES = ['admin', 'administrator', 'support', 'security', 'moderator'];
-export const reservedUsername = (name: string) =>
-  [...SYSTEM_NAMES, 'official', 'fpiupdates', 'fpi_updates'].includes(name.toLowerCase());
+export const reservedUsername = (name: string) => SYSTEM_NAMES.includes(name.toLowerCase());
 export const usernameFormat = (name: string) => /^[a-z0-9_]{3,30}$/.test(name);
 export async function lockUsernames(tx: Prisma.TransactionClient) {
   // One short transaction lock shared by signup, Google enrollment, profile edits and staff actions.

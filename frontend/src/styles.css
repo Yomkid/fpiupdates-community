@@ -5,7 +5,7 @@
   font-synthesis: none;
   font-size: 14px;
   --green: #15803d;
-  --lime: #cce77b;
+  --lime: #dcfce7;
   --muted: #75817b;
   --line: #e7ebe5;
 }
@@ -38,7 +38,7 @@ a {
 }
 button:focus-visible,
 a:focus-visible {
-  outline: 3px solid #84ae4f;
+  outline: 3px solid #86efac;
   outline-offset: 4px;
 }
 input:focus,
@@ -166,7 +166,7 @@ nav a {
 }
 .left-sidebar nav a.active {
   background: #eaf0e6;
-  color: #214c39;
+  color: #166534;
   font-weight: 700;
 }
 .left-sidebar nav a:hover {
@@ -189,7 +189,7 @@ nav a {
   color: #fff;
 }
 .primary:hover {
-  background: #21554b;
+  background: #166534;
 }
 .secondary {
   background: white;
@@ -9171,7 +9171,84 @@ body,
   cursor: pointer;
   padding: 4px 0;
 }
-.verification-account > summary > span {
+.verification-account > summary > .avatar {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+}
+.community-search-field {
+  display: grid;
+  gap: 8px;
+  margin: 16px;
+}
+.community-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 12px;
+}
+.assignment-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.assignment-account .avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+}
+.stats-page .stat-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  box-shadow: 0 5px 18px rgba(21, 128, 61, 0.06);
+}
+.stats-page .stat-card > strong {
+  color: var(--green);
+}
+.stats-page .stats-section h2 {
+  letter-spacing: -0.025em;
+}
+.stats-page .stats-tabs button.active {
+  color: var(--green);
+}
+.admin-stats-page .stat-grid {
+  gap: 14px;
+}
+.admin-stats-page .stat-card {
+  min-height: 110px;
+  padding: 18px;
+  border-radius: 18px;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+.admin-stats-page .stat-card:hover {
+  border-color: var(--green);
+  transform: translateY(-2px);
+}
+.admin-stats-page .stat-card > strong {
+  line-height: 1.2;
+  font-size: clamp(22px, 2vw, 28px);
+}
+.admin-stats-page .stats-chart {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-stats-page .stat-card {
+    transition: none;
+  }
+}
+.verification-account > summary > span:not(.avatar) {
   display: grid;
   gap: 2px;
   min-width: 0;

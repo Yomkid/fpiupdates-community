@@ -607,7 +607,6 @@ function Feed() {
           communityId={mode === 'community' ? current?.id : undefined}
           onPublished={() => {
             setRefresh((n) => n + 1);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         />
       ) : null}

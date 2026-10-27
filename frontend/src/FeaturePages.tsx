@@ -207,6 +207,7 @@ export function CommunitiesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
+  const [communitySearch, setCommunitySearch] = useState('');
   useEffect(() => {
     let active = true;
     api<Community[]>('/catalog/communities')
@@ -249,6 +250,9 @@ export function CommunitiesPage() {
         current ? (
           <>
             <section className="community-banner">
+              {current.logoMediaId && (
+                <img className="community-logo" src={mediaUrl(current.logoMediaId)} alt="" />
+              )}
               <span className="pill">{current.kind}</span>
               <h2>{current.name}</h2>
               <p>{current.description}</p>
@@ -272,26 +276,49 @@ export function CommunitiesPage() {
           <ErrorBox message="Community not found or inactive." />
         )
       ) : (
-        <div className="community-grid">
-          {items.map((c) => (
-            <section className="community-card" key={c.id}>
-              <span className="feature-icon">
-                <Users size={22} />
-              </span>
-              <span className="pill">{c.kind}</span>
-              <h2>
-                <Link to={`/communities/${c.slug}`}>{c.name}</Link>
-              </h2>
-              <p>{c.description}</p>
-              <div>
-                <span>{c._count.members} members</span>
-                <button className="button secondary small" onClick={() => void join(c)}>
-                  {c.joined ? 'Joined · leave' : 'Join'}
-                </button>
-              </div>
-            </section>
-          ))}
-        </div>
+        <>
+          <label className="community-search-field">
+            <span>Search communities</span>
+            <input
+              type="search"
+              value={communitySearch}
+              onChange={(event) => setCommunitySearch(event.target.value)}
+              placeholder="Search by name"
+            />
+          </label>
+          <div className="community-grid">
+            {items
+              .filter((c) =>
+                c.name.toLocaleLowerCase().includes(communitySearch.trim().toLocaleLowerCase()),
+              )
+              .map((c) => (
+                <section className="community-card" key={c.id}>
+                  {c.logoMediaId ? (
+                    <img className="community-logo" src={mediaUrl(c.logoMediaId)} alt="" />
+                  ) : (
+                    <span className="feature-icon">
+                      <Users size={22} />
+                    </span>
+                  )}
+                  <span className="pill">{c.kind}</span>
+                  <h2>
+                    <Link to={`/communities/${c.slug}`}>{c.name}</Link>
+                  </h2>
+                  <p>{c.description}</p>
+                  <div>
+                    <span>{c._count.members} members</span>
+                    <button className="button secondary small" onClick={() => void join(c)}>
+                      {c.joined ? 'Joined · leave' : 'Join'}
+                    </button>
+                  </div>
+                </section>
+              ))}
+          </div>
+          {items.length > 0 &&
+            !items.some((c) =>
+              c.name.toLocaleLowerCase().includes(communitySearch.trim().toLocaleLowerCase()),
+            ) && <p className="page-panel">No matching communities found.</p>}
+        </>
       )}
     </>
   );

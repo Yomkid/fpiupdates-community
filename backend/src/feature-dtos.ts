@@ -117,6 +117,7 @@ export class MenuDto {
   @IsInt() @Min(0) @Max(100) position!: number;
 }
 export class CommunityDto {
+  @IsOptional() @IsUUID() logoMediaId?: string | null;
   @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/) @MaxLength(80) slug!: string;
   @Transform(clean) @IsString() @MinLength(2) @MaxLength(100) name!: string;
   @Transform(clean) @IsString() @MaxLength(1000) description!: string;

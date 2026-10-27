@@ -566,6 +566,7 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
         uploadedFiles: uploaded._count,
         uploadedBytes: uploaded._sum.bytes ?? 0,
         mediaCapacityBytes: 512 * 1024 * 1024,
+        mediaProvider: process.env.MEDIA_STORAGE_PROVIDER || 'local',
         databaseBytes: dbBytes,
         bookmarks,
         notifications,

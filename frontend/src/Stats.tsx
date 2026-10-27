@@ -37,7 +37,7 @@ type Rankings = {
   communities?: Rank[];
 };
 type Admin = Summary & {
-  admin: Record<string, number | null>;
+  admin: Record<string, number | null> & { mediaProvider: string };
   pages: { page: string; views: number }[];
   sources: { source: string; visitors: number }[];
   modules: { key: string; title: string; status: string; message: string }[];
@@ -541,7 +541,7 @@ export function StatsPage({ admin = false }: { admin?: boolean }) {
           />
         </section>
       ) : (
-        <div className="stats-page">
+        <div className={'stats-page' + (admin ? ' admin-stats-page' : '')}>
           <div className="stats-controls">
             <label>
               Period
@@ -798,11 +798,30 @@ export function StatsPage({ admin = false }: { admin?: boolean }) {
                 {details && tab === 'operations' && (
                   <>
                     <div className="stat-grid">
-                      <Metric label="Media stored" value={bytes(details.admin.mediaBytes)} />
+                      <Metric
+                        label="Storage provider"
+                        value={String(details.admin.mediaProvider ?? 'Not available')}
+                      />
+                      <Metric
+                        label="Recorded media"
+                        value={bytes(details.admin.mediaBytes as number | null)}
+                        note="Application records; may differ from provider usage"
+                      />
                       <Metric label="Media files" value={details.admin.mediaFiles} />
                       <Metric
-                        label="Local media allowance"
-                        value={bytes(details.admin.mediaCapacityBytes)}
+                        label="Application media limit"
+                        value={bytes(details.admin.mediaCapacityBytes as number | null)}
+                      />
+                      <Metric
+                        label="Remaining application allowance"
+                        value={bytes(
+                          Math.max(
+                            0,
+                            Number(details.admin.mediaCapacityBytes ?? 0) -
+                              Number(details.admin.mediaBytes ?? 0),
+                          ),
+                        )}
+                        note="Not the provider's remaining quota"
                       />
                       <Metric
                         label="Uploaded in period"
@@ -832,6 +851,14 @@ export function StatsPage({ admin = false }: { admin?: boolean }) {
                         value={bytes(details.admin.processHeapBytes)}
                       />
                     </div>
+                    <p className="form-note">
+                      Media usage above is calculated from application records and does not include
+                      objects outside FpiUpdates or other Neon branches. Check the{' '}
+                      <a href="https://console.neon.tech/" target="_blank" rel="noreferrer">
+                        Neon console
+                      </a>{' '}
+                      for your provider quota and network usage.
+                    </p>
                     <p className="form-note">
                       API aggregates flush about every minute and can lose an unflushed buffer on a
                       crash. Health checks and collection beacons are excluded. Process uptime is

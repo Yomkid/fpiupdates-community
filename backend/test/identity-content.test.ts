@@ -9,6 +9,8 @@ test('public availability protects system names, reservations and former handles
     user: { findUnique: async () => null },
     usernameHold: { findUnique: async () => null },
   };
+  data.usernameHold.findUnique = async ({ where }: any) =>
+    where.username === 'fpiupdates' ? { expiresAt: null, ownerId: null } : null;
   assert.equal(await usernameUnavailable(data, 'fpiupdates'), true);
   assert.equal(await usernameUnavailable(data, 'new_user'), false);
   data.usernameHold.findUnique = async () => ({ expiresAt: null });

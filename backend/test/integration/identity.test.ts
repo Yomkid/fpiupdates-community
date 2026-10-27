@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import sharp from 'sharp';
+import { randomUUID } from 'node:crypto';
 import { AppModule } from '../../src/app.module';
 import { Database } from '../../src/database';
 import { configureApp } from '../../src/app';
@@ -71,6 +73,86 @@ after(async () => {
 });
 const admin = () => `Bearer ${adminToken}`,
   member = () => `Bearer ${memberToken}`;
+test('community logos require staff permission and are visible only while active', async () => {
+  const image = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#15803d' } })
+    .png()
+    .toBuffer();
+  await request(app.getHttpServer())
+    .post('/api/v1/media/community')
+    .set('Authorization', member())
+    .attach('file', image, 'logo.png')
+    .expect(403);
+  const upload = await request(app.getHttpServer())
+    .post('/api/v1/media/community')
+    .set('Authorization', admin())
+    .attach('file', image, 'logo.png')
+    .expect(201);
+  const id = randomUUID();
+  const data = {
+    slug: 'community-' + stamp,
+    name: 'Test community',
+    description: '',
+    kind: 'INTEREST',
+    active: true,
+    logoMediaId: upload.body.id,
+  };
+  try {
+    await request(app.getHttpServer())
+      .put('/api/v1/admin/communities/' + id)
+      .set('Authorization', admin())
+      .send(data)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get('/api/v1/media/' + upload.body.id)
+      .expect(200);
+    await request(app.getHttpServer())
+      .put('/api/v1/admin/communities/' + id)
+      .set('Authorization', admin())
+      .send({ ...data, active: false })
+      .expect(200);
+    await request(app.getHttpServer())
+      .get('/api/v1/media/' + upload.body.id)
+      .expect(404);
+  } finally {
+    await db.community.deleteMany({ where: { id } });
+  }
+});
+test('seeded platform reservations appear in the staff list; account lookup requires permission', async () => {
+  const holds = await request(app.getHttpServer())
+    .get('/api/v1/admin/identity/holds')
+    .set('Authorization', admin())
+    .expect(200);
+  assert.ok(holds.body.some((hold: { username: string }) => hold.username === 'fpiupdates'));
+  await request(app.getHttpServer())
+    .get('/api/v1/admin/identity/assignment-users')
+    .query({ q: 'mem' })
+    .set('Authorization', member())
+    .expect(403);
+  const match = await db.user.findUniqueOrThrow({ where: { id: memberId } });
+  const found = await request(app.getHttpServer())
+    .get('/api/v1/admin/identity/assignment-users')
+    .query({ q: match.username })
+    .set('Authorization', admin())
+    .expect(200);
+  assert.ok(found.body.some((user: { id: string }) => user.id === memberId));
+  assert.equal(
+    found.body.find((user: { id: string }) => user.id === memberId).passwordHash,
+    undefined,
+  );
+});
+test('an authorised reviewer can assign the seeded brand handle to an existing account', async () => {
+  await request(app.getHttpServer())
+    .put('/api/v1/admin/identity/assign')
+    .set('Authorization', admin())
+    .send({ userId: memberId, username: 'fpiupdates', reason: 'Approved platform account' })
+    .expect(200);
+  assert.equal(
+    (await db.user.findUniqueOrThrow({ where: { id: memberId } })).username,
+    'fpiupdates',
+  );
+  const hold = await db.usernameHold.findUniqueOrThrow({ where: { username: 'fpiupdates' } });
+  assert.equal(hold.ownerId, memberId);
+});
 test('reservation checks cover signup, availability and profile edits; ordinary members cannot manage them', async () => {
   const name = 'hold' + stamp;
   await request(app.getHttpServer())
