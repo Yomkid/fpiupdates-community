@@ -136,3 +136,26 @@ test('review cannot approve the reviewer’s own campaign', async () => {
   );
   assert.deepEqual(where.ownerId, { not: 'reviewer' });
 });
+
+test('public profile preview uses its avatar and removes generic sharing tags', async () => {
+  let query: any;
+  const db = { user: { findFirst: async (q: any) => { query = q; return { username: 'reader', displayName: 'A Reader', bio: 'Hello', avatarMediaId: '11111111-1111-4111-8111-111111111111' }; } } };
+  const profile = await publicPage(db as any, '/u/reader');
+  assert.equal(query.where.status, 'ACTIVE');
+  assert.equal(profile.image, '11111111-1111-4111-8111-111111111111');
+  assert.match(metadata(profile), /\/api\/v1\/media\/11111111-1111-4111-8111-111111111111/);
+  assert.match(metadata(profile), /name="twitter:card" content="summary"/);
+  const html = renderPublicHtml('<head><title>generic</title><meta property="og:image" content="old"><meta name="twitter:card" content="old"></head><div id="root"></div>', profile);
+  assert.equal((html.match(/property="og:image"/g) || []).length, 1);
+  assert.equal((html.match(/name="twitter:card"/g) || []).length, 1);
+  assert.ok(!html.includes('content="old"'));
+});
+
+test('profile without an avatar uses the default card and unavailable profiles stay private', async () => {
+  const db = { user: { findFirst: async () => ({ username: 'reader', displayName: 'Reader', bio: '', avatarMediaId: null }) } };
+  const profile = await publicPage(db as any, '/u/reader');
+  assert.match(metadata(profile), /fpiupdates-share-v1\.png/);
+  const missing = await publicPage({ user: { findFirst: async () => null } } as any, '/u/reader');
+  assert.equal(missing.public, false);
+  assert.match(metadata(missing), /noindex,nofollow/);
+});

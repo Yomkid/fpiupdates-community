@@ -6,6 +6,17 @@
       "destination": "https://fpiupdates.onrender.com/api/:path*"
     },
     {
+      "source": "/u/:username",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(Twitterbot|facebookexternalhit|Facebot|WhatsApp|LinkedInBot|TelegramBot|Discordbot|Slackbot|Pinterest|Googlebot|bingbot).*"
+        }
+      ],
+      "destination": "https://fpiupdates.onrender.com/u/:username"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
